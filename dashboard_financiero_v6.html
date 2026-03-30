@@ -1201,7 +1201,7 @@ function calcCFBancos() {
   const data = D();
   const bd = data.bancos || {};
   const meses = data.meses || [];
-  const bancos = bd.bancos || [];
+  let bancos = bd.bancos || [];
   loadAjustesLS();
 
   // All ajustes = from Excel + from localStorage
