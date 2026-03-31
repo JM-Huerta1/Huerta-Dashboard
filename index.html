@@ -183,7 +183,7 @@ hr{border:none;border-top:1px solid var(--border);margin:16px 0}
           <input id="sheets-id-input" type="text" placeholder="URL del Apps Script" style="flex:1;padding:10px 13px;background:#111;border:1px solid #2a2a2a;border-radius:9px;font-size:13px;color:#e0e0e0;font-family:inherit;outline:none;min-width:0" onfocus="this.style.borderColor='#3a3a3a'" onblur="this.style.borderColor='#2a2a2a'">
           <button id="btn-sheets-load" onclick="handleSheetsConnect()" style="padding:10px 16px;background:#fff;color:#000;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit">Conectar</button>
         </div>
-        <div id="sheets-status" style="font-size:11px;color:#4a4a4a;margin-top:7px;min-height:15px"></div>
+        <div id="sheets-status" style="font-size:12px;color:#888;margin-top:7px;min-height:15px;transition:color .2s"></div>
         <div id="apps-script-help" style="display:none"></div>
       </div>
 
@@ -1595,27 +1595,32 @@ function handleSheetsConnect() {
 }
 
 window.addEventListener('load', () => {
-  // Auto-connect if we have a saved sheet ID
-  try {
-    const savedId = localStorage.getItem('huerta_sheet_id');
-    if (savedId) {
-      document.getElementById('sheets-id-input').value = savedId;
-      document.getElementById('sheets-status').textContent = 'Reconectando sheet guardado...';
-      loadFromSheets(savedId, 'Huerta Coworking');
-      return;
-    }
-  } catch(e) {}
+  // Always show upload screen first
   document.getElementById('upload-screen').style.display = 'flex';
   document.getElementById('dashboard').style.display = 'none';
-  // Pre-fill slot 0 with Huerta data
+
+  // Pre-fill slot 0 with Huerta preloaded data
   clients = Object.assign({}, PRELOADED);
   const name = Object.keys(PRELOADED)[0];
   loadedSlots[0] = name;
   const s0=document.getElementById('slot-0'); if(s0) s0.classList.add('loaded');
   const sn0=document.getElementById('slot-name-0'); if(sn0) sn0.textContent=name;
   const ss0=document.getElementById('slot-status-0'); if(ss0) ss0.textContent='✓ '+(PRELOADED[name].meses||[]).length+' meses';
-  document.getElementById('name-0').value = name;
-  document.getElementById('btn-start').disabled = false;
+  const ni=document.getElementById('name-0'); if(ni) ni.value=name;
+  const _bs=document.getElementById('btn-start');if(_bs){_bs.disabled=false;_bs.style.opacity='1';}
+
+  // Auto-reconnect Sheets if saved — shown as status message, user sees screen first
+  try {
+    const savedId = localStorage.getItem('huerta_sheet_id');
+    if (savedId) {
+      const inp = document.getElementById('sheets-id-input');
+      const sta = document.getElementById('sheets-status');
+      if(inp) inp.value = savedId;
+      if(sta) sta.textContent = 'Conectando a Google Sheets...';
+      // Small delay so the screen renders before the fetch starts
+      setTimeout(() => loadFromSheets(savedId, 'Huerta Coworking'), 300);
+    }
+  } catch(e) {}
 });
 </script>
 </body>
