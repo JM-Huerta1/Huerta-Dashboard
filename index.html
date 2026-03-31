@@ -158,89 +158,68 @@ hr{border:none;border-top:1px solid var(--border);margin:16px 0}
 <body>
 
 <!-- UPLOAD SCREEN -->
-<div id="upload-screen">
-  <div class="up-logo">Dashboard Financiero</div>
-  <div class="up-main">
-    <h1 class="up-title">Reporte financiero<br>en segundos</h1>
-    <p class="up-sub">Cargá uno o dos archivos Excel y el análisis completo se genera automáticamente.</p>
+<div id="upload-screen" style="display:none;min-height:100vh;background:#0f0f0f;align-items:center;justify-content:center;padding:24px">
+  <div style="width:100%;max-width:440px;margin:auto">
 
-    <div class="clients-wrap">
-      <!-- CLIENTE 1 -->
-      <div class="client-slot open" id="slot-0">
-        <div class="cs-header" onclick="toggleSlot(0)">
-          <div class="cs-dot"></div>
-          <div class="cs-name" id="slot-name-0">Cliente 1</div>
-          <div class="cs-status" id="slot-status-0">Sin cargar</div>
-        </div>
-        <div class="cs-drop">
-          <div class="cs-drop-inner" id="dz-0" onclick="document.getElementById('fi-0').click()">
-            <div style="font-size:28px;margin-bottom:8px">📊</div>
-            <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px">Arrastrá o seleccioná el Excel</div>
-            <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Exportado de Tango · .xlsx</div>
-            <button class="btn-upload-sm" onclick="event.stopPropagation();document.getElementById('fi-0').click()">Seleccionar archivo</button>
-            <input type="file" id="fi-0" accept=".xlsx,.xls" style="display:none">
-          </div>
-          <div style="margin-top:10px">
-            <input type="text" id="name-0" placeholder="Nombre del cliente (ej: Huerta Coworking)" 
-              style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-family:var(--fn);font-size:13px;color:var(--text);background:var(--card);outline:none">
-          </div>
-        </div>
+    <!-- Header -->
+    <div style="text-align:center;margin-bottom:36px">
+      <div style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;background:#fff;border-radius:12px;margin-bottom:14px">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" fill="#111"/><rect x="14" y="3" width="7" height="7" rx="1" fill="#111"/><rect x="3" y="14" width="7" height="7" rx="1" fill="#111"/><rect x="14" y="14" width="7" height="4" rx="1" fill="#111"/><rect x="17" y="20" width="4" height="1.5" rx=".75" fill="#111"/><rect x="20.25" y="17" width="4" height="1.5" rx=".75" fill="#111" transform="rotate(90 20.25 17)"/></svg>
       </div>
-
-      <!-- CLIENTE 2 -->
-      <div class="client-slot" id="slot-1">
-        <div class="cs-header" onclick="toggleSlot(1)">
-          <div class="cs-dot"></div>
-          <div class="cs-name" id="slot-name-1">Cliente 2 <span style="font-size:10px;color:var(--text3);font-weight:400">(opcional)</span></div>
-          <div class="cs-status" id="slot-status-1">Sin cargar</div>
-        </div>
-        <div class="cs-drop">
-          <div class="cs-drop-inner" id="dz-1" onclick="document.getElementById('fi-1').click()">
-            <div style="font-size:28px;margin-bottom:8px">📊</div>
-            <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px">Arrastrá o seleccioná el Excel</div>
-            <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Exportado de Tango · .xlsx</div>
-            <button class="btn-upload-sm" onclick="event.stopPropagation();document.getElementById('fi-1').click()">Seleccionar archivo</button>
-            <input type="file" id="fi-1" accept=".xlsx,.xls" style="display:none">
-          </div>
-          <div style="margin-top:10px">
-            <input type="text" id="name-1" placeholder="Nombre del cliente (ej: Infocampo)" 
-              style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-family:var(--fn);font-size:13px;color:var(--text);background:var(--card);outline:none">
-          </div>
-        </div>
-      </div>
+      <div style="font-size:20px;font-weight:700;color:#fff;letter-spacing:-.02em;margin-bottom:4px">Dashboard Financiero</div>
+      <div style="font-size:13px;color:#4a4a4a">Huerta Coworking</div>
     </div>
 
-    <!-- Google Sheets connection -->
-    <div style="margin:20px 0 0;text-align:center">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <div style="flex:1;height:1px;background:var(--border)"></div>
-        <span style="font-size:12px;color:var(--text3);white-space:nowrap">o conectar Google Sheets</span>
-        <div style="flex:1;height:1px;background:var(--border)"></div>
-      </div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--ra);padding:16px;text-align:left">
-        <div style="font-size:13px;font-weight:500;margin-bottom:10px;display:flex;align-items:center;gap:8px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" fill="#0F9D58"/><path d="M7 8h10M7 12h10M7 16h6" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg>
-          Conectar Google Sheets
+    <!-- Card -->
+    <div style="background:#161616;border:1px solid #262626;border-radius:16px;overflow:hidden">
+
+      <!-- Google Sheets section -->
+      <div style="padding:24px;border-bottom:1px solid #222">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <svg width="16" height="16" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" fill="#0F9D58"/><path d="M7 8h10M7 12h10M7 16h6" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <span style="font-size:13px;font-weight:600;color:#e0e0e0">Conectar Google Sheets</span>
         </div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Pegá la URL del <strong>Apps Script Web App</strong> (recomendado) o el ID del Google Sheet. <a href="#" onclick="document.getElementById('apps-script-help').style.display='block';return false;" style="color:var(--text2)">¿Cómo?</a></div><div id="apps-script-help" style="display:none;background:var(--gray);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text2)">1. En tu Google Sheet: <strong>Extensiones → Apps Script</strong><br>2. Pegá el script que te dio Claude<br>3. <strong>Implementar → Nueva implementación → App web</strong><br>4. Acceso: <strong>Cualquier persona</strong> → Implementar<br>5. Copiá la URL y pegala acá</div>
         <div style="display:flex;gap:8px">
-          <input id="sheets-id-input" type="text" placeholder="URL del Apps Script o ID del Google Sheet" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-family:var(--fn);font-size:12px;background:var(--gray);color:var(--text)">
-          <button id="btn-sheets-load" class="btn-start" style="width:auto;padding:8px 16px;margin:0" onclick="handleSheetsConnect()">Conectar</button>
+          <input id="sheets-id-input" type="text" placeholder="URL del Apps Script" style="flex:1;padding:10px 13px;background:#111;border:1px solid #2a2a2a;border-radius:9px;font-size:13px;color:#e0e0e0;font-family:inherit;outline:none;min-width:0" onfocus="this.style.borderColor='#3a3a3a'" onblur="this.style.borderColor='#2a2a2a'">
+          <button id="btn-sheets-load" onclick="handleSheetsConnect()" style="padding:10px 16px;background:#fff;color:#000;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit">Conectar</button>
         </div>
-        <div id="sheets-status" style="font-size:11px;color:var(--text3);margin-top:8px;min-height:16px"></div>
+        <div id="sheets-status" style="font-size:11px;color:#4a4a4a;margin-top:7px;min-height:15px"></div>
+        <div id="apps-script-help" style="display:none"></div>
+      </div>
+
+      <!-- Divider -->
+      <div style="display:flex;align-items:center;gap:10px;padding:0 24px">
+        <div style="flex:1;height:1px;background:#222"></div>
+        <span style="font-size:11px;color:#3a3a3a;padding:10px 0">o subir archivo Excel</span>
+        <div style="flex:1;height:1px;background:#222"></div>
+      </div>
+
+      <!-- File upload -->
+      <div style="padding:0 24px 24px">
+        <div id="dz-0" onclick="document.getElementById('fi-0').click()" style="border:1.5px dashed #2a2a2a;border-radius:10px;padding:22px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s" onmouseover="this.style.borderColor='#3a3a3a';this.style.background='#1a1a1a'" onmouseout="this.style.borderColor='#2a2a2a';this.style.background=''">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style="margin-bottom:8px;opacity:.35"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div style="font-size:13px;color:#666;margin-bottom:3px">Arrastrá o seleccioná el Excel</div>
+          <div style="font-size:11px;color:#3a3a3a">Exportado de Tango · .xlsx</div>
+          <input type="file" id="fi-0" accept=".xlsx,.xls" style="display:none">
+          <input type="text" id="name-0" value="Huerta Coworking" style="display:none">
+        </div>
+        <div id="slot-status-0" style="font-size:11px;color:#4a4a4a;text-align:center;margin-top:7px;min-height:15px"></div>
+
+        <!-- Hidden slot 2 (future multi-client) -->
+        <div style="display:none">
+          <input type="file" id="fi-1" accept=".xlsx,.xls">
+          <input type="text" id="name-1">
+          <div id="slot-status-1"></div>
+        </div>
+
+        <!-- Launch button -->
+        <button id="btn-start" disabled onclick="launchDashboard()" style="width:100%;margin-top:16px;padding:13px;background:#fff;color:#000;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;opacity:.3;transition:opacity .2s">
+          Ver dashboard →
+        </button>
       </div>
     </div>
 
-    <button class="btn-start" id="btn-start" disabled onclick="launchDashboard()">
-      Ver dashboard →
-    </button>
-
-    <div class="up-features">
-      <div class="up-feat"><div class="up-feat-icon">📈</div><div class="up-feat-title">EBITDA y cashflow</div><div class="up-feat-sub">Real vs objetivo</div></div>
-      <div class="up-feat"><div class="up-feat-icon">🔄</div><div class="up-feat-title">Multi-cliente</div><div class="up-feat-sub">Hasta 2 empresas</div></div>
-      <div class="up-feat"><div class="up-feat-icon">✉️</div><div class="up-feat-title">Mail a socios</div><div class="up-feat-sub">Gmail compatible</div></div>
-    </div>
-    <p class="up-note">El archivo se procesa localmente. Ningún dato sale de tu computadora.</p>
+    <div style="text-align:center;margin-top:18px;font-size:11px;color:#2e2e2e">Los datos no se almacenan en ningún servidor</div>
   </div>
 </div>
 
@@ -638,12 +617,14 @@ let loadedSlots = [false, false];
 
 // ── UPLOAD SCREEN ──
 function toggleSlot(i) {
-  document.getElementById('slot-'+i).classList.toggle('open');
+  const el = document.getElementById('slot-'+i);
+  if(el) el.classList.toggle('open');
 }
 
 function setupDrop(i) {
   const dz = document.getElementById('dz-'+i);
   const fi = document.getElementById('fi-'+i);
+  if(!dz || !fi) return; // slot may be hidden
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
   dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); parseFile(i, e.dataTransfer.files[0]); });
@@ -680,10 +661,10 @@ function parseFile(slotIdx, file) {
       }
       clients[clientName] = data;
       loadedSlots[slotIdx] = clientName;
-      document.getElementById('slot-'+slotIdx).classList.add('loaded');
-      document.getElementById('slot-name-'+slotIdx).textContent = clientName;
-      document.getElementById('slot-status-'+slotIdx).textContent = '✓ ' + data.meses.length + ' meses';
-      document.getElementById('btn-start').disabled = false;
+      const _sl=document.getElementById('slot-'+slotIdx);if(_sl)_sl.classList.add('loaded');
+      const _sn=document.getElementById('slot-name-'+slotIdx);if(_sn)_sn.textContent=clientName;
+      const _ss=document.getElementById('slot-status-'+slotIdx);if(_ss)_ss.textContent='✓ '+data.meses.length+' meses';
+      const _bs=document.getElementById('btn-start');if(_bs){_bs.disabled=false;_bs.style.opacity='1';}
     } catch(err) {
       alert('Error al leer el archivo: ' + err.message);
     }
@@ -903,9 +884,9 @@ function resetApp() {
   document.getElementById('dashboard').style.display = 'none';
   clients = {}; loadedSlots = [false,false];
   [0,1].forEach(i => {
-    document.getElementById('slot-'+i).classList.remove('loaded');
-    document.getElementById('slot-name-'+i).textContent = i===0?'Cliente 1':'Cliente 2'+(i===1?' (opcional)':'');
-    document.getElementById('slot-status-'+i).textContent = 'Sin cargar';
+    const rSlot=document.getElementById('slot-'+i); if(rSlot) rSlot.classList.remove('loaded');
+    const rName=document.getElementById('slot-name-'+i); if(rName) rName.textContent = i===0?'Cliente 1':'Cliente 2'+(i===1?' (opcional)':'');
+    const rStat=document.getElementById('slot-status-'+i); if(rStat) rStat.textContent = 'Sin cargar';
     document.getElementById('fi-'+i).value = '';
     document.getElementById('name-'+i).value = '';
   });
@@ -1630,9 +1611,9 @@ window.addEventListener('load', () => {
   clients = Object.assign({}, PRELOADED);
   const name = Object.keys(PRELOADED)[0];
   loadedSlots[0] = name;
-  document.getElementById('slot-0').classList.add('loaded');
-  document.getElementById('slot-name-0').textContent = name;
-  document.getElementById('slot-status-0').textContent = '✓ ' + (PRELOADED[name].meses||[]).length + ' meses';
+  const s0=document.getElementById('slot-0'); if(s0) s0.classList.add('loaded');
+  const sn0=document.getElementById('slot-name-0'); if(sn0) sn0.textContent=name;
+  const ss0=document.getElementById('slot-status-0'); if(ss0) ss0.textContent='✓ '+(PRELOADED[name].meses||[]).length+' meses';
   document.getElementById('name-0').value = name;
   document.getElementById('btn-start').disabled = false;
 });
