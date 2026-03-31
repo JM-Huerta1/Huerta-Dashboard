@@ -274,15 +274,7 @@ hr{border:none;border-top:1px solid var(--border);margin:16px 0}
   </div>
 
   <div class="pane" id="pane-ebitda">
-    <p class="sec">Estado de Resultados devengado</p><div class="ebt" id="ebitda-table"></div>
-    <div class="g2">
-      <div class="cc"><div class="cc-title">EBITDA mensual ($)</div><canvas id="chart-ebitda" height="120"></canvas></div>
-      <div class="cc"><div class="cc-title">Margen EBITDA (%)</div><canvas id="chart-margen" height="120"></canvas></div>
-    </div>
-    <p class="sec">Costos variables por sede — detalle</p><div class="tcard" id="costos-sede-table"></div>
-    <p class="sec">Costos de la marca — detalle</p><div class="tcard" id="costos-marca-table"></div>
-    <p class="sec">Financieros e impuestos — detalle</p><div class="tcard" id="fin-table"></div>
-    <p class="sec">IVA — detalle</p><div class="tcard" id="iva-table"></div>
+    <div id="ebitda-content"></div>
   </div>
 
   <div class="pane" id="pane-objetivos">
@@ -1299,7 +1291,20 @@ function renderEBITDA() {
 
 
 function renderObjetivos() {
-  const data = D(), obj=data.objetivos||{};
+  const data = D();
+  // Build obj from data.budget (new presupuesto) with fallback to data.objetivos (legacy)
+  const bud = data.budget || {};
+  const obj = {};
+  Object.keys(bud).forEach(m => {
+    const ing = Object.values(bud[m]['INGRESOS']||{}).reduce((s,v)=>s+Object.values(v).reduce((a,b)=>a+b,0),0);
+    const cvArr = Object.values(bud[m]['COSTOS VARIABLES POR SEDE']||{});
+    const cv = Math.abs(cvArr.reduce((s,v)=>s+Object.values(v).reduce((a,b)=>a+b,0),0));
+    const cmArr = Object.values(bud[m]['COSTOS DE LA MARCA']||{});
+    const cm = Math.abs(cmArr.reduce((s,v)=>s+Object.values(v).reduce((a,b)=>a+b,0),0));
+    obj[m] = { INGRESOS: ing, 'COSTOS VARIABLES POR SEDE': cv, 'COSTOS DE LA MARCA': cm, EBITDA: ing - cv - cm, MARGEN: ing ? Math.round((ing-cv-cm)/ing*1000)/10 : 0 };
+  });
+  // Merge legacy objetivos if budget is empty
+  if (!Object.keys(bud).length) Object.assign(obj, data.objetivos||{});
   let sI=0,sE=0,n=0,bM='',bP=0;
   (data.meses||[]).forEach(m=>{const er=(data.ebitda||{})[m]||{},om=obj[m]||{};if(om.INGRESOS){sI+=(er.ingresos||0)/om.INGRESOS*100;n++;}if(om.EBITDA&&om.EBITDA>0)sE+=(er.ebitda||0)/om.EBITDA*100;if(om.INGRESOS){const p=(er.ingresos||0)/om.INGRESOS*100;if(p>bP){bP=p;bM=m;}}});
   const aI=n?Math.round(sI/n):0,aE=n?Math.round(sE/n):0,cls=p=>p>=100?'green':p>=80?'amber':'red';
