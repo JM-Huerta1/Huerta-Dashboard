@@ -1467,9 +1467,6 @@ function genMail() {
   <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#999;font-family:Arial,sans-serif;margin-bottom:12px">INGRESOS POR PRODUCTO — ${mn(m).toUpperCase()}</div>
   ${pA.length?pA.map(([k,v])=>`<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px"><tr><td width="130" style="font-size:12px;color:#555;font-family:Arial,sans-serif;font-weight:500">${k}</td><td style="padding:0 9px"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0f0ee;border-radius:3px;height:5px"><tr><td width="${Math.round(v/mxP*100)}%" style="background:#2563eb;border-radius:3px;height:5px;font-size:1px">&nbsp;</td><td></td></tr></table></td><td width="65" align="right" style="font-size:12px;color:#555;font-family:Arial,sans-serif;font-weight:600">${fmt(v)}</td></tr></table>`).join(''):'<div style="font-size:12px;color:#999;font-family:Arial,sans-serif">Sin datos de producto para este mes.</div>'}
   <div style="border-top:1px solid #f0f0ee;margin:20px 0"></div>
-  <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#999;font-family:Arial,sans-serif;margin-bottom:12px">SALDOS BANCARIOS</div>
-  ${(()=>{try{const {meses:bM,bancos:bL,result:bR}=calcCFBancos();const lastM=bM[bM.length-1];let total=0;const rows=bL.map(b=>{const sf=bR[lastM]?.[b]?.sf||0;total+=sf;return`<tr><td style="padding:7px 0;border-bottom:1px solid #f5f5f3;font-family:Arial,sans-serif;font-size:12px;color:#555">${b}</td><td align="right" style="padding:7px 0;border-bottom:1px solid #f5f5f3;font-family:Arial,sans-serif;font-size:12px;font-weight:700;color:${sf>=0?'#16a34a':'#dc2626'}">${fmtP(sf)}</td></tr>`;}).join('');return`<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr style="background:#f8f8f6"><td style="padding:7px 0;font-size:10px;font-weight:700;color:#999;letter-spacing:1px;text-transform:uppercase;font-family:Arial,sans-serif">Cuenta</td><td align="right" style="padding:7px 0;font-size:10px;font-weight:700;color:#999;text-transform:uppercase;font-family:Arial,sans-serif">Saldo actual</td></tr>${rows}<tr><td style="padding:8px 0;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#1a1a18">Total</td><td align="right" style="padding:8px 0;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:${total>=0?'#16a34a':'#dc2626'}">${fmtP(total)}</td></tr></table>`;}catch(e){return'';}})()}
-  <div style="border-top:1px solid #f0f0ee;margin:20px 0"></div>
   <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#999;font-family:Arial,sans-serif;margin-bottom:12px">CASHFLOW DE CAJA</div>
   ${(()=>{
     // Usa exactamente calcCFBancos() — misma fuente que Total Consolidado
@@ -1525,13 +1522,48 @@ function genMail() {
   <div style="border-top:1px solid #f0f0ee;margin:20px 0"></div>
   <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#999;font-family:Arial,sans-serif;margin-bottom:11px">TOP DEUDORES</div>
   <table width="100%" cellpadding="0" cellspacing="0" border="0">
-    <tr style="background:#f8f8f6"><td style="padding:6px 0;font-size:10px;font-weight:700;color:#999;letter-spacing:1px;text-transform:uppercase;font-family:Arial,sans-serif">Cliente</td><td align="right" style="padding:6px 0;font-size:10px;font-weight:700;color:#999;text-transform:uppercase;font-family:Arial,sans-serif">Pendiente</td></tr>
-    ${top5d.map(([n,v],i)=>`<tr><td style="padding:7px 0;border-bottom:1px solid #f5f5f3;font-family:Arial,sans-serif;font-size:12px;color:#555">${n}</td><td align="right" style="padding:7px 0;border-bottom:1px solid #f5f5f3;font-family:Arial,sans-serif;font-size:12px;font-weight:700;color:${i<2?'#dc2626':'#d97706'}">${fmtP(v)}</td></tr>`).join('')}
+    <tr style="background:#f8f8f6">
+      <td style="padding:7px 0;font-size:10px;font-weight:700;color:#999;letter-spacing:1px;text-transform:uppercase;font-family:Arial,sans-serif">Cliente</td>
+      <td align="right" style="padding:7px 0;font-size:10px;font-weight:700;color:#999;text-transform:uppercase;font-family:Arial,sans-serif">Pendiente</td>
+    </tr>
+    ${top5d.map(([n,v],i)=>`<tr><td style="padding:8px 0;border-bottom:1px solid #f5f5f3;font-family:Arial,sans-serif;font-size:12px;color:#555">${n}</td><td align="right" style="padding:8px 0;border-bottom:1px solid #f5f5f3;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:${i===0?'#dc2626':i<3?'#d97706':'#555'}">${fmtP(v)}</td></tr>`).join('')}
+    ${(()=>{const total=top5d.reduce((s,[,v])=>s+v,0);return total>0?`<tr><td style="padding:8px 0;font-family:Arial,sans-serif;font-size:12px;font-weight:700;color:#1a1a18">Total a cobrar</td><td align="right" style="padding:8px 0;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#dc2626">${fmtP(total)}</td></tr>`:''})()}
   </table>
   <div style="border-top:1px solid #f0f0ee;margin:20px 0"></div>
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8f8f6;border-radius:8px"><tr><td style="padding:14px 16px">
-    <div style="font-size:13px;font-weight:600;color:#1a1a18;font-family:Arial,sans-serif;margin-bottom:6px">Resumen ejecutivo</div>
-    <div style="font-size:12px;color:#666;font-family:Arial,sans-serif;line-height:1.7">${mn(m)} muestra ${ebitda>=0?'una mejora respecto a meses anteriores':'resultados que requieren atención'}, con un EBITDA de <strong>${ebitda>=0?'+':''}${fmtP(ebitda)} (${er.margen||0}%)</strong> y resultado neto de <strong>${resultado>=0?'+':''}${fmtP(resultado)}</strong>. El cashflow de caja es ${neto>=0?`positivo en <strong>+${fmtP(neto)}</strong>`:`negativo en <strong>${fmtP(neto)}</strong>`} con ${pct}% del mes transcurrido.</div>
+  ${(()=>{
+    // Alertas con colores
+    const alertas=[];
+    if(vencidos>0) alertas.push({color:'#dc2626',bg:'#fef2f2',border:'#fecaca',icon:'⚠️',titulo:'Clientes vencidos sin cobrar',valor:fmtP(vencidos),desc:'Hay facturas con vencimiento pasado que necesitan seguimiento urgente.'});
+    if(totalProv>0) alertas.push({color:'#d97706',bg:'#fffbeb',border:'#fde68a',icon:'📋',titulo:'Deuda con proveedores pendiente',valor:fmtP(totalProv),desc:'Revisá los vencimientos más próximos para no generar mora.'});
+    if(ebitda<0) alertas.push({color:'#dc2626',bg:'#fef2f2',border:'#fecaca',icon:'📉',titulo:'EBITDA negativo en '+mn(m),valor:fmtP(ebitda),desc:'Los costos superaron los ingresos este mes. Revisar estructura de gastos.'});
+    const lastCF=(()=>{try{const {meses:bM,result:bR,bancos:bL}=calcCFBancos();const lm=bM[bM.length-1];const sf=bL.reduce((s,b)=>s+(bR[lm]?.[b]?.sf||0),0);if(sf<0)alertas.push({color:'#dc2626',bg:'#fef2f2',border:'#fecaca',icon:'🏦',titulo:'Saldo bancario negativo',valor:fmtP(sf),desc:'El saldo consolidado de cuentas está en negativo al cierre del período.'});return sf;}catch(e){return 0;}})();
+    return alertas.length===0
+      ? `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0fdf4;border-left:3px solid #16a34a;margin-bottom:8px"><tr><td style="padding:10px 12px"><div style="font-size:12px;font-weight:700;color:#166534;font-family:Arial,sans-serif">✅ Sin alertas urgentes</div><div style="font-size:11px;color:#555;font-family:Arial,sans-serif;margin-top:3px">Todo bajo control por ahora.</div></td></tr></table>`
+      : alertas.map(a=>`<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${a.bg};border-left:3px solid ${a.color};margin-bottom:8px"><tr><td style="padding:10px 12px"><div style="font-size:12px;font-weight:700;color:#1a1a18;font-family:Arial,sans-serif;margin-bottom:2px">${a.icon} ${a.titulo}: <span style="color:${a.color}">${a.valor}</span></div><div style="font-size:11px;color:#666;font-family:Arial,sans-serif">${a.desc}</div></td></tr></table>`).join('');
+  })()}
+  <div style="border-top:1px solid #f0f0ee;margin:20px 0"></div>
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8f8f6;border-radius:10px;border:1px solid #eee"><tr><td style="padding:18px 20px">
+    <div style="font-size:13px;font-weight:700;color:#1a1a18;font-family:Arial,sans-serif;margin-bottom:10px">📝 Resumen ejecutivo</div>
+    <div style="font-size:13px;color:#444;font-family:Arial,sans-serif;line-height:1.8">
+      ${(()=>{
+        const mesNombre=mn(m);
+        const ebitdaStr=`<strong style="color:${ebitda>=0?'#16a34a':'#dc2626'}">${ebitda>=0?'+':''}${fmtP(ebitda)} (${er.margen||0}%)</strong>`;
+        const resultadoStr=`<strong style="color:${resultado>=0?'#16a34a':'#dc2626'}">${resultado>=0?'+':''}${fmtP(resultado)}</strong>`;
+        const ingresosStr=`<strong>${fmtP(er.ingresos||0)}</strong>`;
+        let txt=`En ${mesNombre} los ingresos llegaron a ${ingresosStr}, con un EBITDA de ${ebitdaStr} y un resultado neto de ${resultadoStr}. `;
+        try{
+          const {meses:bM,bancos:bL,result:bR}=calcCFBancos();
+          const lm=bM[bM.length-1];
+          const sf=bL.reduce((s,b)=>s+(bR[lm]?.[b]?.sf||0),0);
+          const neto2=bL.reduce((s,b)=>s+(bR[lm]?.[b]?.ingresos||0)-(bR[lm]?.[b]?.egresos||0)+(bR[lm]?.[b]?.aj_total||0),0);
+          txt+=`El saldo bancario consolidado al cierre es de <strong style="color:${sf>=0?'#16a34a':'#dc2626'}">${sf<0?'-':''}${fmtP(Math.abs(sf))}</strong>. `;
+          if(vencidos>0) txt+=`Hay <strong style="color:#dc2626">${fmtP(vencidos)}</strong> pendiente de cobro con facturas vencidas que requieren seguimiento. `;
+          if(totalProv>0) txt+=`Del lado de proveedores, quedan <strong style="color:#d97706">${fmtP(totalProv)}</strong> por pagar. `;
+        }catch(e){}
+        txt+=`Estamos al ${pct}% del mes, con ${dias-dia} días por delante.`;
+        return txt;
+      })()}
+    </div>
   </td></tr></table>
 </td></tr>
 <tr><td style="background:#f8f8f6;border-radius:0 0 14px 14px;padding:13px 30px;border-top:1px solid #eee">
