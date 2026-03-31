@@ -254,7 +254,7 @@ hr{border:none;border-top:1px solid var(--border);margin:16px 0}
     <div class="topbar-right">
       <button class="btn-sm btn-ghost" onclick="resetApp()">↑ Cambiar archivos</button>
       <button class="btn-sm btn-ghost" id="btn-refresh-sheets" style="display:none" onclick="refreshSheets()">↻ Actualizar datos</button>
-      <button class="btn-sm btn-primary" onclick="goTab('mail')">✉ Generar mail</button>
+      <button class="btn-sm btn-primary" id="btn-genmail" style="display:none" onclick="goTab('mail')">✉ Generar mail</button>
     </div>
   </div>
 
@@ -278,7 +278,7 @@ hr{border:none;border-top:1px solid var(--border);margin:16px 0}
     <div class="tab" onclick="goTab('deudores')">Deudores</div>
     <div class="tab" onclick="goTab('proveedores')">Proveedores</div>
     <div class="tab" onclick="goTab('bancos')">Cashflow bancos</div>
-    <div class="tab" onclick="goTab('mail')">Mail socios</div>
+    <div class="tab" id="tab-mail" style="display:none" onclick="goTab('mail')">Mail socios</div>
   </div>
 
   <div class="pane active" id="pane-resumen">
@@ -431,14 +431,14 @@ async function loadFromSheets(sheetId, clientName) {
 
     if(isAppsScript) {
       APPS_SCRIPT_URL = sheetId;
-      statusEl.textContent = 'Cargando datos desde Apps Script...';
-      const r = await fetch(sheetId);
-      if(!r.ok) throw new Error('Error conectando al Apps Script: ' + r.status);
+      statusEl.textContent = 'Cargando datos desde Google Sheets...';
+      // Use Vercel proxy to avoid CORS issues
+      const proxyURL = '/api/data?url=' + encodeURIComponent(sheetId);
+      const r = await fetch(proxyURL);
+      if(!r.ok) throw new Error('Error del proxy: ' + r.status + '. Verificá que /api/data.js esté deployado en Vercel.');
       const json = await r.json();
-      if(json.error) throw new Error(json.error);
-      // Apps Script returns pre-built data object directly
-      const data = json;
-      finishSheetsLoad(data, clientName, sheetId);
+      if(json.error) throw new Error('Apps Script error: ' + json.error);
+      finishSheetsLoad(json, clientName, sheetId);
       return;
     } else {
       // Legacy CSV mode
@@ -876,6 +876,11 @@ function launchDashboard() {
   document.getElementById('dashboard').style.display = 'block';
   document.getElementById('dash-title').textContent = curClient;
   document.getElementById('top-meta').textContent = 'Datos: ' + (clients[curClient].meses||[]).map(mn).join(', ') + ' · Fecha de referencia: ' + today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
+  // Show mail tab if admin mode
+  if(new URLSearchParams(window.location.search).get('admin')==='1') {
+    const tm=document.getElementById('tab-mail'); if(tm) tm.style.display='';
+    const bm=document.getElementById('btn-genmail'); if(bm) bm.style.display='';
+  }
 }
 
 function switchClient(btn) {
@@ -910,6 +915,34 @@ function resetApp() {
   document.getElementById('mail-gen-wrap').style.display = 'block';
   document.getElementById('mail-action-btns').innerHTML = '';
 }
+
+// ── SECRET MAIL ACCESS ──
+// Access via: URL + ?admin=1  OR  click the dashboard title 5 times
+(function() {
+  // Check URL param
+  if(new URLSearchParams(window.location.search).get('admin')==='1') {
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('tab-mail') && (document.getElementById('tab-mail').style.display='');
+      document.getElementById('btn-genmail') && (document.getElementById('btn-genmail').style.display='');
+    });
+  }
+  // Secret tap: click title 5 times within 3 seconds
+  let clicks=0, timer=null;
+  document.addEventListener('click', e => {
+    if(e.target.id==='dash-title'||e.target.closest('#dash-title')) {
+      clicks++;
+      clearTimeout(timer);
+      if(clicks>=5) {
+        clicks=0;
+        const t=document.getElementById('tab-mail');
+        const b=document.getElementById('btn-genmail');
+        if(t) t.style.display = t.style.display===''?'none':'';
+        if(b) b.style.display = b.style.display===''?'none':'';
+      }
+      timer=setTimeout(()=>clicks=0, 3000);
+    }
+  });
+})();
 
 function buildFilters() {
   const D = clients[curClient] || {};
@@ -1274,10 +1307,10 @@ function renderBancos() {
   </div>`;
 
   // ── TOTAL CONSOLIDADO ──
-  const fmtSigned = (v) => (v<0?'-':'')+fmtP(Math.abs(v));
-  const fmtGreen  = (v) => `<span style="color:${v>=0?'var(--g)':'var(--r)'};">${v<0?'−':'+'}${fmtP(Math.abs(v))}</span>`;
+  // Respeta el filtro de mes (activeMeses)
+  const dispMeses = activeMeses.length ? activeMeses : meses;
+  const lastDisp  = dispMeses[dispMeses.length-1];
 
-  // Build consolidated rows
   const totSI  = m => bancos.reduce((s,b)=>s+(result[m]?.[b]?.si||0),0);
   const totIng = m => bancos.reduce((s,b)=>s+(result[m]?.[b]?.ingresos||0),0);
   const totEgP = m => bancos.reduce((s,b)=>s+(result[m]?.[b]?.egresos_prov||result[m]?.[b]?.egresos||0),0);
@@ -1285,30 +1318,42 @@ function renderBancos() {
   const totAj  = m => bancos.reduce((s,b)=>s+(result[m]?.[b]?.aj_total||0),0);
   const totSF  = m => bancos.reduce((s,b)=>s+(result[m]?.[b]?.sf||0),0);
 
-  const mkRow = (label, fn, isTotal=false, labelColor='var(--text)') =>
-    `<tr${isTotal?' style="background:var(--gray);font-weight:600"':''}>
-      <td style="font-size:12px;color:${labelColor};padding:10px 16px 10px 0">${label}</td>
-      ${meses.map(m=>{const v=fn(m);return`<td class="tr" style="padding:10px 8px;font-size:12px;font-weight:${isTotal?700:500};color:${v>=0?'var(--g)':'var(--r)'}">${v===0?'—':(v<0?'−':'+')+fmtP(Math.abs(v))}</td>`;}).join('')}
+  const hasEgI = dispMeses.some(m=>totEgI(m)!==0);
+  const hasAj  = dispMeses.some(m=>totAj(m)!==0);
+  const sfFinal = totSF(lastDisp);
+
+  const mkCellTot = (v, bold=false) => {
+    const color = v===0?'var(--text3)':v>0?'var(--g)':'var(--r)';
+    const sign  = v===0?'':v>0?'+':'−';
+    const val   = v===0?'—':sign+'$'+Math.abs(v).toLocaleString('es-AR',{maximumFractionDigits:0});
+    return `<td class="tr" style="padding:13px 20px;font-size:13px;font-weight:${bold?700:500};color:${color};border-bottom:1px solid var(--border)">${val}</td>`;
+  };
+  const mkRowTot = (label, fn, labelColor='var(--text2)', bg='', bold=false) =>
+    `<tr style="background:${bg}">
+      <td style="padding:13px 20px;font-size:12px;font-weight:${bold?700:600};color:${labelColor};border-bottom:1px solid var(--border)">${label}</td>
+      ${dispMeses.map(m=>mkCellTot(fn(m),bold)).join('')}
     </tr>`;
 
-  html += `<div style="background:var(--card);border:2px solid var(--text);border-radius:var(--ra);overflow:hidden;margin-bottom:20px">
-    <div style="padding:12px 16px;background:var(--text);display:flex;justify-content:space-between;align-items:center">
-      <div style="font-size:13px;font-weight:700;color:#fff">TOTAL CONSOLIDADO</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.6)">Saldo final: <strong style="color:${totSF(meses[meses.length-1])>=0?'#4ade80':'#f87171'}">${fmtSigned(totSF(meses[meses.length-1]))}</strong></div>
+  html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;box-shadow:0 2px 12px rgba(0,0,0,.07)">
+    <div style="padding:16px 20px;background:var(--text);display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:14px;font-weight:700;color:#fff;letter-spacing:.02em">TOTAL CONSOLIDADO</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.55)">Saldo final: <strong style="color:${sfFinal>=0?'#4ade80':'#f87171'};font-size:14px">${sfFinal<0?'−':'+'}$${Math.abs(sfFinal).toLocaleString('es-AR',{maximumFractionDigits:0})}</strong></div>
     </div>
     <div style="overflow-x:auto">
-    <table style="min-width:500px;width:100%">
-      <thead><tr>
-        <th style="padding:8px 16px 8px 0;font-size:10px;letter-spacing:.08em;color:var(--text3);font-weight:600;text-align:left;text-transform:uppercase">Concepto</th>
-        ${meses.map(m=>`<th class="tr" style="padding:8px 8px;font-size:10px;letter-spacing:.08em;color:var(--text3);font-weight:600;text-transform:uppercase">${mn(m).toUpperCase()}</th>`).join('')}
-      </tr></thead>
+    <table style="min-width:500px;width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="background:var(--gray)">
+          <th style="padding:10px 20px;font-size:10px;letter-spacing:.1em;color:var(--text3);font-weight:700;text-align:left;text-transform:uppercase;border-bottom:2px solid var(--border)">Concepto</th>
+          ${dispMeses.map(m=>`<th class="tr" style="padding:10px 20px;font-size:10px;letter-spacing:.1em;color:var(--text3);font-weight:700;text-transform:uppercase;border-bottom:2px solid var(--border)">${mn(m).toUpperCase()}</th>`).join('')}
+        </tr>
+      </thead>
       <tbody>
-        ${mkRow('Saldo inicial', totSI)}
-        ${mkRow('+ Ingresos cobrados', totIng, false, 'var(--g)')}
-        ${mkRow('− Pagos a proveedores', m=>-totEgP(m), false, 'var(--r)')}
-        ${totEgI(meses[0])>0||totEgI(meses[meses.length-1])>0?mkRow('− Sueldos / Imp. / Otros', m=>-totEgI(m), false, 'var(--r)'):''}
-        ${totAj(meses[0])!==0||totAj(meses[meses.length-1])!==0?mkRow('± Ajustes', totAj, false, 'var(--a)'):''}
-        ${mkRow('Saldo final', totSF, true)}
+        ${mkRowTot('Saldo inicial', totSI, 'var(--text2)', '')}
+        ${mkRowTot('↑ Ingresos cobrados', totIng, 'var(--g)', 'rgba(22,163,74,.04)')}
+        ${mkRowTot('↓ Pagos a proveedores', m=>-totEgP(m), 'var(--r)', 'rgba(220,38,38,.04)')}
+        ${hasEgI?mkRowTot('↓ Sueldos / Imp. / Otros', m=>-totEgI(m), 'var(--r)', 'rgba(220,38,38,.04)'):''}
+        ${hasAj?mkRowTot('± Ajustes', totAj, 'var(--a)', 'rgba(217,119,6,.04)'):''}
+        ${mkRowTot('Saldo final', totSF, 'var(--text)', 'var(--gray)', true)}
       </tbody>
     </table>
     </div>
