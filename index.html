@@ -1474,12 +1474,11 @@ function genMail() {
   ${(()=>{
     const meses=(data.meses||[]);
     const hd=meses.map(m=>`<td align="right" style="padding:6px 8px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#999;font-family:Arial,sans-serif;border-bottom:2px solid #e8e8e4">${mn(m).toUpperCase()}</td>`).join('');
-    // Usar datos de bancos para consistencia (excluye TARJETA BBVA)
-    let bMesesCF=[],bListCF=[],bResCF={};
-    try{const cfRes=calcCFBancos();bMesesCF=cfRes.meses;bListCF=cfRes.bancos;bResCF=cfRes.result;}catch(e){}
-    const cfIng  = mes => bListCF.reduce((s,b)=>s+(bResCF[mes]?.[b]?.ingresos||0),0);
-    const cfEgP  = mes => bListCF.reduce((s,b)=>s+(bResCF[mes]?.[b]?.egresos_prov||0),0);
-    const cfEgI  = mes => bListCF.reduce((s,b)=>s+(bResCF[mes]?.[b]?.egresos_imp||0),0);
+    // Cashflow directo desde cf_banco (excluye TARJETA BBVA)
+    const _bd=(data.bancos||{}), _bList=(_bd.bancos||[]).filter(b=>!b.toUpperCase().includes('TARJETA')), _cfRaw=_bd.cf_banco||{};
+    const cfIng  = mes => _bList.reduce((s,b)=>s+(_cfRaw[mes]?.[b]?.ingresos||0),0);
+    const cfEgP  = mes => _bList.reduce((s,b)=>s+(_cfRaw[mes]?.[b]?.egresos_prov||_cfRaw[mes]?.[b]?.egresos||0),0);
+    const cfEgI  = mes => _bList.reduce((s,b)=>s+(_cfRaw[mes]?.[b]?.egresos_imp||0),0);
     const cfNeto = mes => cfIng(mes)-cfEgP(mes)-cfEgI(mes);
     const row=(label,fn,color)=>`<tr><td style="padding:7px 0;font-size:12px;color:${color};font-family:Arial,sans-serif;font-weight:500;border-bottom:1px solid #f5f5f3">${label}</td>${meses.map(mes=>{const v=fn(mes);return`<td align="right" style="padding:7px 8px;font-size:12px;font-weight:600;color:${color};font-family:Arial,sans-serif;border-bottom:1px solid #f5f5f3">${v>=0?'+':'-'}${fmtP(Math.abs(v))}</td>`;}).join('')}</tr>`;
     const netoRow=`<tr style="background:#f8f8f6"><td style="padding:8px 0;font-size:13px;font-weight:700;color:#1a1a18;font-family:Arial,sans-serif">Neto de caja</td>${meses.map(mes=>{const v=cfNeto(mes);return`<td align="right" style="padding:8px 8px;font-size:13px;font-weight:700;color:${v>=0?'#16a34a':'#dc2626'};font-family:Arial,sans-serif">${v>=0?'+':'-'}${fmtP(Math.abs(v))}</td>`;}).join('')}</tr>`;
