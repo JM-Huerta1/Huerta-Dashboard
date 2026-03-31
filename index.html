@@ -1472,35 +1472,50 @@ function genMail() {
   <div style="border-top:1px solid #f0f0ee;margin:20px 0"></div>
   <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#999;font-family:Arial,sans-serif;margin-bottom:12px">CASHFLOW DE CAJA</div>
   ${(()=>{
-    const meses=(data.meses||[]);
-    const hd=meses.map(m=>`<td align="right" style="padding:6px 8px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#999;font-family:Arial,sans-serif;border-bottom:2px solid #e8e8e4">${mn(m).toUpperCase()}</td>`).join('');
-    // Cashflow directo desde cf_banco (excluye TARJETA BBVA)
-    const _bd=(data.bancos||{}), _bList=(_bd.bancos||[]).filter(b=>!b.toUpperCase().includes('TARJETA')), _cfRaw=_bd.cf_banco||{};
-    const cfIng  = mes => _bList.reduce((s,b)=>s+(_cfRaw[mes]?.[b]?.ingresos||0),0);
-    const cfEgP  = mes => _bList.reduce((s,b)=>s+(_cfRaw[mes]?.[b]?.egresos_prov||_cfRaw[mes]?.[b]?.egresos||0),0);
-    const cfEgI  = mes => _bList.reduce((s,b)=>s+(_cfRaw[mes]?.[b]?.egresos_imp||0),0);
-    const cfNeto = mes => cfIng(mes)-cfEgP(mes)-cfEgI(mes);
-    const row=(label,fn,color)=>`<tr><td style="padding:7px 0;font-size:12px;color:${color};font-family:Arial,sans-serif;font-weight:500;border-bottom:1px solid #f5f5f3">${label}</td>${meses.map(mes=>{const v=fn(mes);return`<td align="right" style="padding:7px 8px;font-size:12px;font-weight:600;color:${color};font-family:Arial,sans-serif;border-bottom:1px solid #f5f5f3">${v>=0?'+':'-'}${fmtP(Math.abs(v))}</td>`;}).join('')}</tr>`;
-    const netoRow=`<tr style="background:#f8f8f6"><td style="padding:8px 0;font-size:13px;font-weight:700;color:#1a1a18;font-family:Arial,sans-serif">Neto de caja</td>${meses.map(mes=>{const v=cfNeto(mes);return`<td align="right" style="padding:8px 8px;font-size:13px;font-weight:700;color:${v>=0?'#16a34a':'#dc2626'};font-family:Arial,sans-serif">${v>=0?'+':'-'}${fmtP(Math.abs(v))}</td>`;}).join('')}</tr>`;
-    // Saldos por banco
-    let saldosHtml='';
-    try{
-      const {meses:bM,bancos:bL,result:bR}=calcCFBancos();
-      const lastM=bM[bM.length-1];
-      const saldoRows=bL.map(b=>{
-        const sf=bR[lastM]?.[b]?.sf||0;
-        return`<tr><td style="padding:5px 0;font-size:11px;color:#555;font-family:Arial,sans-serif;padding-left:12px">${b}</td><td align="right" colspan="${meses.length}" style="padding:5px 8px;font-size:11px;font-weight:600;color:${sf>=0?'#16a34a':'#dc2626'};font-family:Arial,sans-serif">${sf<0?'-':''}${fmtP(Math.abs(sf))}</td></tr>`;
-      }).join('');
-      const total=bL.reduce((s,b)=>s+(bR[lastM]?.[b]?.sf||0),0);
-      saldosHtml=`<tr><td style="padding:7px 0;font-size:12px;font-weight:600;color:#1a1a18;font-family:Arial,sans-serif;border-top:2px solid #e8e8e4" colspan="${meses.length+1}">Saldos bancarios al cierre</td></tr>${saldoRows}<tr style="background:#f8f8f6"><td style="padding:7px 0;font-size:12px;font-weight:700;color:#1a1a18;font-family:Arial,sans-serif">Total bancos</td><td align="right" colspan="${meses.length}" style="padding:7px 8px;font-size:13px;font-weight:700;color:${total>=0?'#16a34a':'#dc2626'};font-family:Arial,sans-serif">${total<0?'-':''}${fmtP(Math.abs(total))}</td></tr>`;
-    }catch(e){}
-    return`<table width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr><td style="padding:6px 0;font-size:10px;font-weight:700;color:#999;font-family:Arial,sans-serif;border-bottom:2px solid #e8e8e4">CONCEPTO</td>${hd}</tr>
-      ${row('↑ Cobrado',m=>cfIng(m),'#2563eb')}
-      ${row('↓ Pagos a proveedores',m=>-cfEgP(m),'#dc2626')}
-      ${row('↓ Sueldos / Imp. / Otros',m=>-cfEgI(m),'#dc2626')}
-      ${netoRow}
-      ${saldosHtml}
+    // Usa exactamente calcCFBancos() — misma fuente que Total Consolidado
+    let _r; try{_r=calcCFBancos();}catch(e){return '';}
+    const {meses:bM, bancos:bL, result:bRes} = _r;
+
+    const totSI  = m => bL.reduce((s,b)=>s+(bRes[m]?.[b]?.si||0),0);
+    const totIng = m => bL.reduce((s,b)=>s+(bRes[m]?.[b]?.ingresos||0),0);
+    const totEgP = m => bL.reduce((s,b)=>s+(bRes[m]?.[b]?.egresos_prov||bRes[m]?.[b]?.egresos||0),0);
+    const totEgI = m => bL.reduce((s,b)=>s+(bRes[m]?.[b]?.egresos_imp||0),0);
+    const totAj  = m => bL.reduce((s,b)=>s+(bRes[m]?.[b]?.aj_total||0),0);
+    const totSF  = m => bL.reduce((s,b)=>s+(bRes[m]?.[b]?.sf||0),0);
+    const hasEgI = bM.some(m=>totEgI(m)!==0);
+    const hasAj  = bM.some(m=>totAj(m)!==0);
+    const lastM  = bM[bM.length-1];
+    const sfFinal = totSF(lastM);
+
+    const hd = bM.map(m=>`<td align="right" style="padding:6px 8px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#999;font-family:Arial,sans-serif;border-bottom:2px solid #e8e8e4">${mn(m).toUpperCase()}</td>`).join('');
+
+    const mkCell = (v, bold=false) => {
+      const c = v===0?'#999':v>0?'#16a34a':'#dc2626';
+      const val = v===0?'—':(v>0?'+':'-')+'$'+Math.abs(v).toLocaleString('es-AR',{maximumFractionDigits:0});
+      return `<td align="right" style="padding:8px;font-size:12px;font-weight:${bold?700:500};color:${c};font-family:Arial,sans-serif;border-bottom:1px solid #f5f5f3">${val}</td>`;
+    };
+    const mkRow = (label, fn, color, bg='', bold=false) =>
+      `<tr style="background:${bg}"><td style="padding:8px 0;font-size:12px;color:${color};font-weight:${bold?700:500};font-family:Arial,sans-serif;border-bottom:1px solid #f5f5f3">${label}</td>${bM.map(m=>mkCell(fn(m),bold)).join('')}</tr>`;
+
+    const saldoRows = bL.map(b=>{
+      const sf=bRes[lastM]?.[b]?.sf||0;
+      return `<tr><td style="padding:4px 0 4px 12px;font-size:11px;color:#666;font-family:Arial,sans-serif">${b}</td><td align="right" colspan="${bM.length}" style="padding:4px 8px;font-size:11px;font-weight:600;color:${sf>=0?'#16a34a':'#dc2626'};font-family:Arial,sans-serif">${sf<0?'-':''}$${Math.abs(sf).toLocaleString('es-AR',{maximumFractionDigits:0})}</td></tr>`;
+    }).join('');
+    const total = bL.reduce((s,b)=>s+(bRes[lastM]?.[b]?.sf||0),0);
+
+    return `<table width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr style="background:#f8f8f6">
+        <td style="padding:6px 0;font-size:10px;font-weight:700;color:#999;font-family:Arial,sans-serif;border-bottom:2px solid #e8e8e4">CONCEPTO</td>${hd}
+      </tr>
+      ${mkRow('Saldo inicial', totSI, '#555')}
+      ${mkRow('↑ Ingresos cobrados', totIng, '#2563eb', '#f0f7ff')}
+      ${mkRow('↓ Pagos a proveedores', m=>-totEgP(m), '#dc2626', '#fff5f5')}
+      ${hasEgI?mkRow('↓ Sueldos / Imp. / Otros', m=>-totEgI(m), '#dc2626', '#fff5f5'):''}
+      ${hasAj?mkRow('± Ajustes', totAj, '#d97706'):''}
+      ${mkRow('Saldo final', totSF, '#1a1a18', '#f8f8f6', true)}
+      <tr><td colspan="${bM.length+1}" style="padding:10px 0 4px;font-size:10px;font-weight:700;color:#999;letter-spacing:.08em;text-transform:uppercase;font-family:Arial,sans-serif;border-top:2px solid #e8e8e4">Saldos por cuenta al cierre</td></tr>
+      ${saldoRows}
+      <tr style="background:#f8f8f6"><td style="padding:7px 0;font-size:12px;font-weight:700;color:#1a1a18;font-family:Arial,sans-serif">Total</td><td align="right" colspan="${bM.length}" style="padding:7px 8px;font-size:13px;font-weight:700;color:${total>=0?'#16a34a':'#dc2626'};font-family:Arial,sans-serif">${total<0?'-':''}$${Math.abs(total).toLocaleString('es-AR',{maximumFractionDigits:0})}</td></tr>
     </table>`;
   })()}
   <div style="border-top:1px solid #f0f0ee;margin:20px 0"></div>
