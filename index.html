@@ -105,6 +105,7 @@ th{padding:7px 15px;text-align:left;font-size:10px;font-weight:600;color:var(--t
 td{padding:8px 15px;border-bottom:1px solid var(--border);color:var(--text2)}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:var(--gray);color:var(--text)}
+.no-hover:hover td{background:inherit!important;color:inherit!important}
 .tdn{color:var(--text);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tr{text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
 .tr.g{color:var(--g)}.tr.r{color:var(--r)}.tr.a{color:var(--a)}.tr.b{color:var(--b)}
@@ -441,11 +442,15 @@ function finishSheetsLoad(data, clientName, savedId) {
   statusEl && (statusEl.textContent = `✓ ${(data.meses||[]).map(mn).join(', ')} cargados`);
   const allDates=[...(data.cobranzas_raw||[]),...(data.pagos_raw||[])].map(r=>r.fecha).filter(Boolean).map(s=>new Date(s)).filter(d=>!isNaN(d));
   if(allDates.length){today=new Date(Math.max(...allDates));today.setHours(0,0,0,0);}
-  // Preserve budget, er_detail, tc from PRELOADED since Sheets doesn't send them
+  // Merge budget, er_detail, tc from PRELOADED
   const preData = PRELOADED[clientName] || PRELOADED[Object.keys(PRELOADED)[0]] || {};
   if(!data.budget && preData.budget) data.budget = preData.budget;
-  if(!data.er_detail && preData.er_detail) data.er_detail = preData.er_detail;
   if(!data.tc && preData.tc) data.tc = preData.tc;
+  // For er_detail: use Sheets-built data for months that exist, fill gaps from PRELOADED
+  if(preData.er_detail) {
+    if(!data.er_detail) data.er_detail = {};
+    Object.keys(preData.er_detail).forEach(m => { if(!data.er_detail[m]) data.er_detail[m] = preData.er_detail[m]; });
+  }
   clients[clientName]=data;
   try{localStorage.setItem('huerta_sheet_id',savedId);}catch(e){}
   document.getElementById('upload-screen').style.display='none';
@@ -516,7 +521,7 @@ function extractDataFromRows(cobRows, pagRows, erRows, impRows, objRows, fcRows,
 
   const out = {meses, cashflow:{}, ebitda:{}, sedes:{}, productos:{}, costos_marca:{},
     costos_sede_cat:{}, financieros_cat:{}, iva_cat:{}, cobranzas_raw:[], pagos_raw:[],
-    deudores:[], proveedores_pend:[], impuestos_raw:[], objetivos:{},
+    deudores:[], proveedores_pend:[], impuestos_raw:[], objetivos:{}, er_detail:{},
     bancos:{bancos:[],saldos_iniciales:{},ajustes:[],cf_banco:{}}};
 
   // Objetivos
@@ -555,6 +560,25 @@ function extractDataFromRows(cobRows, pagRows, erRows, impRows, objRows, fcRows,
     erM.filter(r=>(r['SUBCATEGORIA']||'')==='FINANCIEROS').forEach(r=>{const c=r['Cuenta']||'';if(c)finM[c]=(finM[c]||0)+pN(r['Importe']||0);});
     erM.filter(r=>(r['SUBCATEGORIA']||'')==='IVA').forEach(r=>{const c=r['Cuenta']||'';if(c)ivaM[c]=(ivaM[c]||0)+pN(r['Importe']||0);});
     out.sedes[mes]=sedesM;out.productos[mes]=prodsM;out.costos_sede_cat[mes]=csM;out.costos_marca[mes]=cmM;out.financieros_cat[mes]=finM;out.iva_cat[mes]=ivaM;
+
+    // Build er_detail from ER rows (same structure as PRELOADED er_detail)
+    // Groups by SUBCATEGORIA → Cuenta → SEDES with _total
+    const SUBS_ER = ['INGRESOS','COSTOS VARIABLES POR SEDE','COSTOS DE LA MARCA','FINANCIEROS','IMPUESTOS','IVA'];
+    const erDet = {};
+    SUBS_ER.forEach(sub => {
+      const rows = erM.filter(r=>(r['SUBCATEGORIA']||r['Subcategoria']||'')=== sub);
+      if (!rows.length) return;
+      erDet[sub] = {};
+      rows.forEach(r => {
+        const cuenta = r['Cuenta']||r['cuenta']||''; if (!cuenta) return;
+        const sede   = (r['SEDES']||r['Sedes']||'HUERTA').toUpperCase();
+        const val    = pN(r['Importe']||r['importe']||0);
+        if (!erDet[sub][cuenta]) erDet[sub][cuenta] = {_total:0};
+        erDet[sub][cuenta]._total += val;
+        erDet[sub][cuenta][sede]  = (erDet[sub][cuenta][sede]||0) + val;
+      });
+    });
+    out.er_detail[mes] = erDet;
   });
 
   // Raw data
@@ -656,11 +680,15 @@ function parseFile(slotIdx, file) {
       if(slotIdx === 0) {
         Object.keys(PRELOADED).forEach(k => { if(clients[k]) delete clients[k]; });
       }
-      // Preserve budget, er_detail, tc from PRELOADED since Sheets doesn't send them
+      // Merge budget, er_detail, tc from PRELOADED
       const preData = PRELOADED[clientName] || PRELOADED[Object.keys(PRELOADED)[0]] || {};
       if(!data.budget && preData.budget) data.budget = preData.budget;
-      if(!data.er_detail && preData.er_detail) data.er_detail = preData.er_detail;
       if(!data.tc && preData.tc) data.tc = preData.tc;
+      // For er_detail: use Sheets-built data for months that exist, fill gaps from PRELOADED
+      if(preData.er_detail) {
+        if(!data.er_detail) data.er_detail = {};
+        Object.keys(preData.er_detail).forEach(m => { if(!data.er_detail[m]) data.er_detail[m] = preData.er_detail[m]; });
+      }
       clients[clientName] = data;
       loadedSlots[slotIdx] = clientName;
       const _sl=document.getElementById('slot-'+slotIdx);if(_sl)_sl.classList.add('loaded');
@@ -1115,7 +1143,7 @@ function renderEBITDA() {
 
   // Build table header
   h += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>
-    <th style="text-align:left;padding:6px 7px;font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1.5px solid var(--border);min-width:130px">Concepto</th>`;
+    <th style="text-align:left;padding:6px 7px;font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1.5px solid var(--border);min-width:180px;white-space:nowrap">Concepto</th>`;
 
   if (dispMeses.length === 1) {
     const m=dispMeses[0], hasR=REAL_M.includes(m);
@@ -1145,7 +1173,7 @@ function renderEBITDA() {
     const bg = darkBg ? 'var(--text)' : '#1a1a2e';
     const erv = dispMeses.map(m => REAL_M.includes(m) ? subList.reduce((s,sb)=>s+getRsub(m,sb),0) : null);
     const ebv = dispMeses.map(m => subList.reduce((s,sb)=>s+getBsub(m,sb),0));
-    let row = `<tr style="background:${bg}"><td style="padding:10px 7px;font-weight:500;font-size:13px;color:var(--card)">${label}</td>`;
+    let row = `<tr class="no-hover" style="background:${bg}"><td style="padding:10px 7px;font-weight:500;font-size:13px;color:var(--card)">${label}</td>`;
     if (dispMeses.length === 1) {
       const m=dispMeses[0], hasR=REAL_M.includes(m), rv=hasR?erv[0]:null, bvv=ebv[0];
       const rI=hasR?getRsub(m,'INGRESOS'):null, bI=getBsub(m,'INGRESOS');
@@ -1179,7 +1207,7 @@ function renderEBITDA() {
 
     // Section header row
     h += `<tr style="background:var(--gray);cursor:pointer" onclick="document.getElementById('ebitda-content')._togSub(${subIdx})">
-      <td style="padding:8px 7px;font-weight:500;font-size:11px;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;border-top:1px solid var(--border)">
+      <td style="padding:8px 7px;font-weight:500;font-size:11px;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;border-top:1px solid var(--border);white-space:nowrap">
         <span style="font-size:9px;display:inline-block;margin-right:5px;${isSubOpen?'transform:rotate(90deg)':''}">▶</span>${SL[sub]}
       </td>`;
 
@@ -1216,7 +1244,7 @@ function renderEBITDA() {
         if (!hasAny) return;
 
         h += `<tr style="border-bottom:.5px solid var(--border);cursor:pointer" onclick="document.getElementById('ebitda-content')._togC('${cKey}')">
-          <td style="padding:5px 7px 5px 24px;color:var(--text)">
+          <td style="padding:5px 7px 5px 24px;color:var(--text);white-space:nowrap">
             <span style="font-size:9px;color:var(--text3);display:inline-block;margin-right:5px;${isOpen?'transform:rotate(90deg)':''}">▶</span>${c}
           </td>`;
 
@@ -1247,7 +1275,7 @@ function renderEBITDA() {
             const hasS = dispMeses.some(m => (erDetail[m]?.[sub]?.[c]?.[se]||0)!==0||(bud[m]?.[sub]?.[c]?.[se]||0)!==0);
             if (!hasS) return;
             h += `<tr style="background:var(--gray);border-bottom:.5px solid var(--border)">
-              <td style="padding:3px 7px 3px 42px;font-size:11px;color:var(--text3)">${se}</td>`;
+              <td style="padding:3px 7px 3px 42px;font-size:11px;color:var(--text3);white-space:nowrap">${se}</td>`;
             if (dispMeses.length === 1) {
               const m=dispMeses[0], hasR=REAL_M.includes(m), rv=hasR?(erDetail[m]?.[sub]?.[c]?.[se]||0):null, bv=bud[m]?.[sub]?.[c]?.[se]||0;
               h += `<td style="text-align:right;padding:3px 7px;font-size:11px;font-variant-numeric:tabular-nums;color:${rv!==null?realCol(rv):'var(--text3)'}">${rv!==null?fmt(rv,m):'—'}</td>`;
@@ -1280,7 +1308,7 @@ function renderEBITDA() {
   // Resultado neto
   const nrv=dispMeses.map(m=>REAL_M.includes(m)?ALL_SUBS.reduce((s,sb)=>s+getRsub(m,sb),0):null);
   const nbv=dispMeses.map(m=>ALL_SUBS.reduce((s,sb)=>s+getBsub(m,sb),0));
-  h += `<tr style="border-top:2px solid var(--border)"><td style="padding:10px 7px;font-weight:500;font-size:13px">Resultado neto</td>`;
+  h += `<tr class="no-hover" style="border-top:2px solid var(--border)"><td style="padding:10px 7px;font-weight:500;font-size:13px">Resultado neto</td>`;
   if (dispMeses.length === 1) {
     const m=dispMeses[0], hasR=REAL_M.includes(m), rv=hasR?nrv[0]:null, bvv=nbv[0];
     const rI=hasR?getRsub(m,'INGRESOS'):null, bI=getBsub(m,'INGRESOS');
@@ -1654,7 +1682,21 @@ function renderBancos() {
 
 // ── MAIL ──
 function genMail() {
-  const data = D(), m=mkKey(today),cf=(data.cashflow||{})[m]||{},er=(data.ebitda||{})[m]||{};
+  const data = D(), m=mkKey(today),cf=(data.cashflow||{})[m]||{};
+  // Use er_detail for accurate ingresos (er_detail has correct product breakdown incl. FLEX EMPRESAS)
+  const erD = data.er_detail || {};
+  const erOld = (data.ebitda||{})[m]||{};
+  const erIng = erD[m] ? Object.values(erD[m]['INGRESOS']||{}).reduce((s,v)=>s+(v._total||0),0) : (erOld.ingresos||0);
+  const erCV  = erD[m] ? Math.abs(Object.values(erD[m]['COSTOS VARIABLES POR SEDE']||{}).reduce((s,v)=>s+(v._total||0),0)) : Math.abs(erOld.costos_sede||0);
+  const erCM  = erD[m] ? Math.abs(Object.values(erD[m]['COSTOS DE LA MARCA']||{}).reduce((s,v)=>s+(v._total||0),0)) : Math.abs(erOld.costos_marca||0);
+  const erFin = erD[m] ? Object.values(erD[m]['FINANCIEROS']||{}).reduce((s,v)=>s+(v._total||0),0) : (erOld.financieros||0);
+  const erImp = erD[m] ? Object.values(erD[m]['IMPUESTOS']||{}).reduce((s,v)=>s+(v._total||0),0) : (erOld.impuestos||0);
+  const erEbitda = erIng - erCV - erCM;
+  const erResult = erEbitda + erFin + erImp;
+  const erMargen = erIng ? Math.round(erEbitda/erIng*1000)/10 : 0;
+  const erMargenResult = erIng ? Math.round(erResult/erIng*1000)/10 : 0;
+  // Wrap in er-like object for backward compat
+  const er = {...erOld, ingresos:erIng, costos_sede:-erCV, costos_marca:-erCM, ebitda:erEbitda, resultado:erResult, margen:erMargen, margen_resultado:erMargenResult};
   const dias=new Date(today.getFullYear(),today.getMonth()+1,0).getDate(),dia=today.getDate(),pct=Math.round(dia/dias*100);
   const objMes=(data.objetivos||{})[m]||{};
   const objIng=objMes.INGRESOS||0;
