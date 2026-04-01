@@ -230,6 +230,10 @@ hr{border:none;border-top:1px solid var(--border);margin:16px 0}
     <div class="topbar-left">
       <h1 id="dash-title">Dashboard Financiero</h1>
       <span id="top-meta"></span>
+      <span style="margin-left:12px;display:inline-flex;align-items:center;gap:6px">
+        <span style="font-size:10px;color:var(--text3)">Fecha ref:</span>
+        <input type="date" id="manual-date" style="font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-family:var(--fn);cursor:pointer" onchange="setManualDate(this.value)" title="Fijar fecha de referencia manualmente">
+      </span>
     </div>
     <div class="topbar-right">
       <button class="btn-sm btn-ghost" onclick="resetApp()">↑ Cambiar archivos</button>
@@ -441,7 +445,8 @@ function finishSheetsLoad(data, clientName, savedId) {
   const statusEl = document.getElementById('sheets-status');
   statusEl && (statusEl.textContent = `✓ ${(data.meses||[]).map(mn).join(', ')} cargados`);
   const allDates=[...(data.cobranzas_raw||[]),...(data.pagos_raw||[])].map(r=>r.fecha).filter(Boolean).map(s=>new Date(s)).filter(d=>!isNaN(d));
-  if(allDates.length){today=new Date(Math.max(...allDates));today.setHours(0,0,0,0);}
+  if(allDates.length&&!_todayOverride){today=new Date(Math.max(...allDates));today.setHours(0,0,0,0);}
+  const _md=document.getElementById('manual-date'); if(_md&&!_md.value) _md.value=today.toISOString().slice(0,10);
   // Merge budget, er_detail, tc from PRELOADED
   const preData = PRELOADED[clientName] || PRELOADED[Object.keys(PRELOADED)[0]] || {};
   if(!data.budget && preData.budget) data.budget = preData.budget;
@@ -457,7 +462,7 @@ function finishSheetsLoad(data, clientName, savedId) {
   document.getElementById('dashboard').style.display='block';
   document.getElementById('dash-title').textContent=clientName;
   curClient=clientName; curMeses=[...(data.meses||[])];
-  document.getElementById('top-meta').textContent='Datos: '+data.meses.map(mn).join(', ')+' · Referencia: '+today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
+  document.getElementById('top-meta').textContent='☁️ Sheets · Datos: '+data.meses.map(mn).join(', ')+' · Ref: '+today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
   document.getElementById('btn-refresh-sheets').style.display='inline-flex';
   buildFilters();
   try{renderResumen();}catch(e){console.error(e);}
@@ -516,6 +521,15 @@ function extractDataFromRows(cobRows, pagRows, erRows, impRows, objRows, fcRows,
   const mKey = d => d ? d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0') : null;
   const cobImp = r => pN(r['Importe']||r['importe']||0);
   const pagImp = r => { const i=pN(r['Importe']||r['importe']); if(i>0)return i; const nv=pN(r['NO VA']||r['No Va']||0); return nv>0?nv:0; };
+
+  // Filter all row arrays to 2026+ only — sheet '5' and other sheets may contain historical data
+  const filter2026 = (rows, dateField) => rows.filter(r => {
+    const d = parseDate(r[dateField]||r[dateField.toLowerCase()]||r['Fecha']||r['fecha']);
+    return d && d.getFullYear() >= 2026;
+  });
+  cobRows = filter2026(cobRows, 'Fecha');
+  pagRows = filter2026(pagRows, 'Fecha');
+  erRows  = filter2026(erRows,  'Fecha');
 
   const meses = [...new Set(cobRows.map(r => mKey(parseDate(r['Fecha']||r['fecha']))).filter(Boolean))].sort();
 
@@ -617,7 +631,8 @@ function extractDataFromRows(cobRows, pagRows, erRows, impRows, objRows, fcRows,
 }
 
 // ── STATE ──
-let today = new Date('2026-03-19'); today.setHours(0,0,0,0); // overridden on file load
+let today = new Date(); today.setHours(0,0,0,0); // default = real today, overridden on file load or manual input
+let _todayOverride = null; // manual date override
 const MN = {'2026-01':'Enero','2026-02':'Febrero','2026-03':'Marzo','2026-04':'Abril',
   '2026-05':'Mayo','2026-06':'Junio','2026-07':'Julio','2026-08':'Agosto',
   '2026-09':'Septiembre','2026-10':'Octubre','2026-11':'Noviembre','2026-12':'Diciembre'};
@@ -627,6 +642,8 @@ const fmtP = n => '$'+Math.abs(n).toLocaleString('es-AR',{maximumFractionDigits:
 const pD = s => { if(!s||s==='None'||s==='null') return null; const p=String(s).match(/^(\d{4})-(\d{2})-(\d{2})/); if(p){const d=new Date(+p[1],+p[2]-1,+p[3]);return isNaN(d)?null:d;} const d=new Date(s); return isNaN(d)?null:d; };
 const mkKey = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
 const wkRange = d => { const c=new Date(d),dy=c.getDay(),di=c.getDate()-dy+(dy===0?-6:1); const m=new Date(c.getFullYear(),c.getMonth(),di); const s=new Date(c.getFullYear(),c.getMonth(),di+6,23,59,59); return [m,s]; };
+// Always use real today for week display (data file date may be behind)
+const realToday = () => { const d=new Date(); d.setHours(0,0,0,0); return d; };
 const inWk = (d,m,s) => d>=m && d<=s;
 const nd = n => '<tr><td colspan="'+n+'" style="text-align:center;color:var(--text3);padding:16px">Sin datos</td></tr>';
 
@@ -670,7 +687,8 @@ function parseFile(slotIdx, file) {
       if(allDates.length) {
         const maxDate = new Date(Math.max(...allDates));
         maxDate.setHours(0,0,0,0);
-        today = maxDate;
+        if (!_todayOverride) today = maxDate;
+        const md=document.getElementById('manual-date'); if(md&&!md.value) md.value=today.toISOString().slice(0,10);
         console.log('Fecha de referencia detectada:', today.toLocaleDateString('es-AR'));
       }
       // If replacing a previously loaded slot, remove old client data
@@ -709,6 +727,9 @@ function extractData(wb) {
   const sCob = find(['cobranzas']);
   const sImp = find(['impuesto','otros imp']);
   const sER  = find(['estado de resultados','resultado']);
+  // Sheet '5' has the raw ER data with all dates; 'ESTADO DE RESULTADOS' uses FILTER() formulas that may be empty
+  const sER5 = sn.find(s => s.trim() === '5') || null;
+  const sERuse = (sER5 && XLSX.utils.sheet_to_json(wb.Sheets[sER5],{defval:null,raw:true}).some(r=>r['Fecha']||r['fecha'])) ? sER5 : sER;
   const sFC  = find(['facturas clientes','fac clientes']);
   const sFP  = find(['facturas proveedores','fac prov']);
   const sObj  = find(['objetivo']);
@@ -726,7 +747,7 @@ function extractData(wb) {
   const pagRows = toRows(sPag);
   const cobRows = toRows(sCob);
   const impRows = toRows(sImp);
-  const erRows  = toRows(sER);
+  const erRows  = toRows(sERuse);
   const fcRows  = toRows(sFC);
   const fpRows  = toRows(sFP);
   const objRows = toRows(sObj);
@@ -741,7 +762,9 @@ function extractData(wb) {
   // Detect importe column for cobranzas
   const cobImp = r => pN(r['Importe']||r['importe']||r['NO VA']||0);
 
-  const meses = [...new Set(cobRows.map(r => mKey(pD2(r['Fecha']||r['fecha']))).filter(Boolean))].sort();
+  // Filter erRows to current year only (sheet '5' may contain prior years)
+  const erRowsFiltered = erRows.filter(r => { const d=pD2(r['Fecha']||r['fecha']); return d && d.getFullYear() >= 2026; });
+  const meses = [...new Set(cobRows.map(r => { const d=pD2(r['Fecha']||r['fecha']); return d&&d.getFullYear()>=2026?mKey(d):null; }).filter(Boolean))].sort();
 
   const out = {meses, cashflow:{}, ebitda:{}, sedes:{}, productos:{}, costos_marca:{},
     costos_sede_cat:{}, financieros_cat:{}, iva_cat:{}, cobranzas_raw:[], pagos_raw:[],
@@ -767,7 +790,7 @@ function extractData(wb) {
     const cobM = cobRows.filter(r => mKey(pD2(r['Fecha']||r['fecha'])) === mes);
     const pagM = pagRows.filter(r => mKey(pD2(r['Fecha']||r['fecha'])) === mes);
     const impM = impRows.filter(r => mKey(pD2(r['FECHA DE PAGO']||r['Fecha de pago']||r['Fecha']||r['fecha'])) === mes);
-    const erM  = erRows.filter(r => mKey(pD2(r['Fecha']||r['fecha'])) === mes);
+    const erM  = erRowsFiltered.filter(r => mKey(pD2(r['Fecha']||r['fecha'])) === mes);
 
     const cob = cobM.reduce((a,r)=>a+cobImp(r),0);
     const pag = pagM.reduce((a,r)=>a+pagImp(r),0);
@@ -886,12 +909,21 @@ function launchDashboard() {
   document.getElementById('upload-screen').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
   document.getElementById('dash-title').textContent = curClient;
-  document.getElementById('top-meta').textContent = 'Datos: ' + (clients[curClient].meses||[]).map(mn).join(', ') + ' · Fecha de referencia: ' + today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
+  const srcLabel = loadedSlots.filter(Boolean).length ? '📁 Excel' : '☁️ Sheets';
+  document.getElementById('top-meta').textContent = srcLabel + ' · Datos: ' + (clients[curClient].meses||[]).map(mn).join(', ') + ' · Ref: ' + today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
   // Show mail tab if admin mode
   if(new URLSearchParams(window.location.search).get('admin')==='1') {
     const tm=document.getElementById('tab-mail'); if(tm) tm.style.display='';
     const bm=document.getElementById('btn-genmail'); if(bm) bm.style.display='';
   }
+}
+
+function setManualDate(val) {
+  if (!val) { _todayOverride = null; today = realToday(); }
+  else { const d = new Date(val+'T00:00:00'); if (!isNaN(d)) { _todayOverride = d; today = new Date(d); today.setHours(0,0,0,0); } }
+  render();
+  const srcLabel = (typeof loadedSlots !== 'undefined' && loadedSlots.filter(Boolean).length) ? '📁 Excel' : '☁️ Sheets';
+  document.getElementById('top-meta').textContent = srcLabel + ' · Datos: ' + (clients[curClient]?.meses||[]).map(mn).join(', ') + ' · Ref: ' + today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
 }
 
 function switchClient(btn) {
@@ -1376,7 +1408,7 @@ function renderObjetivos() {
 
 function renderSemana() {
   const data = D();
-  const [wMon,wSun]=wkRange(today);
+  const [wMon,wSun]=wkRange(realToday());
   document.getElementById('wh-title').textContent=`Semana ${wMon.toLocaleDateString('es-AR',{day:'2-digit',month:'short'})} – ${wSun.toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'})}`;
   document.getElementById('wh-sub').textContent=`Hoy: ${today.toLocaleDateString('es-AR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}`;
   const cobS=(data.cobranzas_raw||[]).filter(r=>{const d=pD(r.fecha);return d&&inWk(d,wMon,wSun)&&r.importe>0});
