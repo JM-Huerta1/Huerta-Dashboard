@@ -1010,12 +1010,13 @@ function goTab(id) {
   document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
   document.getElementById('pane-'+id).classList.add('active');
   if(id==='bancos') { try{renderBancos();}catch(e){console.warn(e);} }
+  if(id==='cf_proy') { try{renderCFProy();}catch(e){console.warn(e);} }
 }
 
 // ── RENDER ──
 function render() {
     try{renderResumen();}catch(e){console.error('renderResumen:',e);} try{renderEBITDA();}catch(e){console.error('renderEBITDA:',e);} try{renderObjetivos();}catch(e){console.error('renderObjetivos:',e);} try{renderBancos();}catch(e){console.warn('renderBancos:',e);}
-  renderSemana(); renderMes(); renderDeudores(); renderProveedores();
+  renderSemana(); renderMes(); renderDeudores(); renderProveedores(); try{renderCFProy();}catch(e){console.warn(e);}
 }
 
 function D() { return clients[curClient] || {}; }
@@ -2003,6 +2004,202 @@ window.addEventListener('load', () => {
     }
   } catch(e) {}
 });
+// ── CASHFLOW PROYECTADO ──
+function renderCFProy() {
+  const data = D();
+  const el = document.getElementById('cf-proy-content');
+  if (!el) return;
+
+  const bud = data.budget || {};
+  const erD = data.er_detail || {};
+  const tc  = data.tc || {};
+  const ALL_MONTHS = Object.keys(bud).sort();
+  const REAL_M = (data.meses || []).filter(m => erD[m]);
+
+  // ── Params (stored on element) ──
+  if (!el._cf) el._cf = {
+    tasa: 95,           // % cobranza del mes corriente
+    pct_iva_ing: 68,    // % de ingresos que llevan IVA 21%
+    vf_mes: 50000000,   // Ventas Financieras mensuales (blanqueo)
+    pt_mes: 50000000,   // Pagos a Terceros mensuales (blanqueo)
+    iva_neto_pct: 10.5, // % IVA neto blanqueo que pagás a AFIP
+    moneda: 'ARS',
+  };
+  const p = el._cf;
+  const conv = v => p.moneda==='USD' ? v/(tc[ALL_MONTHS[0]]||1453) : v;
+  const sym  = p.moneda==='USD' ? 'U$' : '$';
+  const fmtN = v => { if(!v) return '—'; const a=Math.abs(v); const s=a>=1e9?sym+(a/1e9).toFixed(2)+'B':a>=1e6?sym+(a/1e6).toFixed(1)+'M':sym+Math.round(a).toLocaleString('es-AR'); return (v<0?'-':'+')+s; };
+  const fmtV = v => fmtN(conv(v));
+
+  // ── Historical IVA: map real months ──
+  // IVA débito + blanqueo of each real month → paid 3 months later
+  // We seed from er_detail for real months, estimate for future
+  const ivaAfip = {}; // mes en que se paga → monto
+  const IVA_RATE = 21/121;
+
+  // For real months compute actual IVA neto
+  REAL_M.forEach(m => {
+    const vf = Object.values(erD[m]?.['IVA']?.['VENTAS FINANCIERAS']||{}).filter(k=>k!=='_total').reduce((s,v)=>s+v, erD[m]?.['IVA']?.['VENTAS FINANCIERAS']?.['_total']||0);
+    // simplified: use _total directly
+    const vfT = erD[m]?.['IVA']?.['VENTAS FINANCIERAS']?.['_total'] || 0;
+    const ptT = Math.abs(erD[m]?.['IVA']?.['PAGOS A TERCEROS']?.['_total'] || 0);
+    // IVA regular: estimate from % of ingresos budget
+    const ingR = Object.values(erD[m]?.['INGRESOS']||{}).reduce((s,v)=>s+(v._total||0),0);
+    const ivaDebReg = ingR * (p.pct_iva_ing/100) * IVA_RATE;
+    // IVA crédito proveedores: rough estimate = 70% of CV that have IVA
+    const cvR = Math.abs(Object.values(erD[m]?.['COSTOS VARIABLES POR SEDE']||{}).reduce((s,v)=>s+(v._total||0),0));
+    const ivaCredReg = cvR * 0.55 * IVA_RATE;
+    const ivaNetoBlanqueo = vfT - ptT;
+    const ivaTotal = (ivaDebReg - ivaCredReg) + ivaNetoBlanqueo;
+    // Pay 3 months later
+    const payMonth = (() => { const [y,mo]=m.split('-').map(Number); const nm=mo+3; return `${y+Math.floor((nm-1)/12)}-${String(((nm-1)%12)+1).padStart(2,'0')}`; })();
+    ivaAfip[payMonth] = (ivaAfip[payMonth]||0) + ivaTotal;
+  });
+
+  // For projected months, estimate IVA
+  ALL_MONTHS.forEach(m => {
+    if (REAL_M.includes(m)) return; // already done
+    const ingB = Object.values(bud[m]?.['INGRESOS']||{}).reduce((s,v)=>s+Object.values(v).reduce((a,b)=>a+b,0),0);
+    const cvB  = Math.abs(Object.values(bud[m]?.['COSTOS VARIABLES POR SEDE']||{}).reduce((s,v)=>s+Object.values(v).reduce((a,b)=>a+b,0),0));
+    const ivaDebReg  = ingB * (p.pct_iva_ing/100) * IVA_RATE;
+    const ivaCredReg = cvB  * 0.55 * IVA_RATE;
+    const ivaNetoBlanqueo = p.vf_mes * (p.iva_neto_pct/100);
+    const ivaTotal = (ivaDebReg - ivaCredReg) + ivaNetoBlanqueo;
+    const payMonth = (() => { const [y,mo]=m.split('-').map(Number); const nm=mo+3; return `${y+Math.floor((nm-1)/12)}-${String(((nm-1)%12)+1).padStart(2,'0')}`; })();
+    ivaAfip[payMonth] = (ivaAfip[payMonth]||0) + ivaTotal;
+  });
+
+  // ── Build monthly cashflow ──
+  const MN = {'2026-01':'Ene','2026-02':'Feb','2026-03':'Mar','2026-04':'Abr','2026-05':'May','2026-06':'Jun','2026-07':'Jul','2026-08':'Ago','2026-09':'Sep','2026-10':'Oct','2026-11':'Nov','2026-12':'Dic'};
+  const rows = [];
+
+  ALL_MONTHS.forEach(m => {
+    const isReal = REAL_M.includes(m);
+    const budIng = Object.values(bud[m]?.['INGRESOS']||{}).reduce((s,v)=>s+Object.values(v).reduce((a,b)=>a+b,0),0);
+    const budCV  = Object.values(bud[m]?.['COSTOS VARIABLES POR SEDE']||{}).reduce((s,v)=>s+Object.values(v).reduce((a,b)=>a+b,0),0);
+    const budCM  = Object.values(bud[m]?.['COSTOS DE LA MARCA']||{}).reduce((s,v)=>s+Object.values(v).reduce((a,b)=>a+b,0),0);
+    const budFin = Object.values(bud[m]?.['FINANCIEROS']||{}).reduce((s,v)=>s+Object.values(v).reduce((a,b)=>a+b,0),0);
+
+    // Real ingresos from er_detail if available
+    const ingBase = isReal
+      ? Object.values(erD[m]?.['INGRESOS']||{}).reduce((s,v)=>s+(v._total||0),0)
+      : budIng;
+
+    // IVA sobre ingresos (estimado)
+    const ivaIngesos = ingBase * (p.pct_iva_ing/100) * IVA_RATE;
+
+    // Ingresos caja = (base + IVA) × tasa_cobranza
+    const ingresosBrutos = ingBase + ivaIngesos;
+    const ingresosCaja   = ingresosBrutos * (p.tasa/100);
+
+    // Blanqueo
+    const vfCaja = p.vf_mes;
+    const ptCaja = -p.pt_mes;
+
+    // Egresos operativos (ya sin IVA, del budget)
+    const egresosOp = budCV + budCM + budFin; // negativos
+
+    // IVA AFIP de hace 3 meses
+    const ivaAFIP = -(ivaAfip[m] || 0);
+
+    const totalIngresos = ingresosCaja + vfCaja;
+    const totalEgresos  = egresosOp + ptCaja + ivaAFIP;
+    const saldo = totalIngresos + totalEgresos;
+
+    rows.push({ m, isReal, ingBase, ivaIngesos, ingresosCaja, vfCaja, egresosOp, ptCaja, ivaAFIP, totalIngresos, totalEgresos, saldo });
+  });
+
+  // Acumulado
+  let acum = 0;
+  rows.forEach(r => { acum += r.saldo; r.acum = acum; });
+
+  // ── Render ──
+  let h = `<div style="margin-bottom:16px">
+    <div style="font-size:15px;font-weight:600;margin-bottom:14px">Cashflow Proyectado 2026</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px;padding:14px;background:var(--gray);border-radius:10px">
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+        <span style="color:var(--text3)">Cobranza:</span>
+        <input type="range" min="70" max="100" value="${p.tasa}" style="width:90px" oninput="document.getElementById('cf-proy-content')._cf.tasa=+this.value;document.getElementById('lbl-tasa').textContent=this.value+'%';renderCFProy()">
+        <span id="lbl-tasa" style="font-weight:600;min-width:32px">${p.tasa}%</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+        <span style="color:var(--text3)">% ing c/IVA:</span>
+        <input type="range" min="40" max="90" value="${p.pct_iva_ing}" style="width:90px" oninput="document.getElementById('cf-proy-content')._cf.pct_iva_ing=+this.value;document.getElementById('lbl-piva').textContent=this.value+'%';renderCFProy()">
+        <span id="lbl-piva" style="font-weight:600;min-width:32px">${p.pct_iva_ing}%</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+        <span style="color:var(--text3)">Blanqueo/mes:</span>
+        <input type="number" value="${p.vf_mes/1e6}" min="0" max="200" step="5" style="width:60px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:12px;font-family:var(--fn)" oninput="document.getElementById('cf-proy-content')._cf.vf_mes=+this.value*1e6;document.getElementById('cf-proy-content')._cf.pt_mes=+this.value*1e6;renderCFProy()">
+        <span style="color:var(--text3)">M</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+        <span style="color:var(--text3)">IVA blanqueo:</span>
+        <input type="range" min="5" max="21" value="${p.iva_neto_pct}" style="width:70px" oninput="document.getElementById('cf-proy-content')._cf.iva_neto_pct=+this.value;document.getElementById('lbl-iva-b').textContent=this.value+'%';renderCFProy()">
+        <span id="lbl-iva-b" style="font-weight:600;min-width:32px">${p.iva_neto_pct}%</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-left:auto">
+        <span style="color:var(--text3)">Moneda:</span>
+        <button style="padding:3px 10px;border-radius:20px;font-size:11px;border:.5px solid var(--border);background:${p.moneda==='ARS'?'var(--text)':'var(--card)'};color:${p.moneda==='ARS'?'var(--card)':'var(--text2)'};cursor:pointer;font-family:var(--fn)" onclick="document.getElementById('cf-proy-content')._cf.moneda='ARS';renderCFProy()">ARS</button>
+        <button style="padding:3px 10px;border-radius:20px;font-size:11px;border:.5px solid var(--border);background:${p.moneda==='USD'?'var(--text)':'var(--card)'};color:${p.moneda==='USD'?'var(--card)':'var(--text2)'};cursor:pointer;font-family:var(--fn)" onclick="document.getElementById('cf-proy-content')._cf.moneda='USD';renderCFProy()">USD</button>
+      </div>
+    </div>`;
+
+  // Table
+  h += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+  <thead>
+    <tr style="background:var(--gray)">
+      <th style="text-align:left;padding:7px 8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1.5px solid var(--border)">Concepto</th>
+      ${rows.map(r=>`<th style="text-align:right;padding:7px 8px;font-size:10px;color:${r.isReal?'var(--g)':'var(--text3)'};text-transform:uppercase;border-bottom:1.5px solid var(--border)">${MN[r.m]||r.m}${r.isReal?'<br><span style="font-size:8px;opacity:.6">real</span>':''}</th>`).join('')}
+    </tr>
+  </thead><tbody>`;
+
+  const rowDef = [
+    { label:'Ingresos base', key:'ingBase', color:'var(--text)', bold:false, indent:1 },
+    { label:'+ IVA cobrado (21%)', key:'ivaIngesos', color:'var(--text3)', bold:false, indent:2 },
+    { label:'→ Ingresos cobrables', key:'ingresosBrutos', color:'var(--text)', bold:false, indent:2, calc: r=>r.ingBase+r.ivaIngesos },
+    { label:'Cobranza efectiva', key:'ingresosCaja', color:'var(--g)', bold:true, indent:1 },
+    { label:'Ventas financieras (blanqueo)', key:'vfCaja', color:'var(--text3)', bold:false, indent:1 },
+    { label:'TOTAL INGRESOS CAJA', key:'totalIngresos', color:'var(--g)', bold:true, sep:true },
+    { label:'Costos operativos (sin IVA)', key:'egresosOp', color:'var(--r)', bold:false, indent:1 },
+    { label:'Pagos a terceros (blanqueo)', key:'ptCaja', color:'var(--text3)', bold:false, indent:1 },
+    { label:'IVA AFIP (-3 meses)', key:'ivaAFIP', color:'var(--r)', bold:false, indent:1, warn:true },
+    { label:'TOTAL EGRESOS', key:'totalEgresos', color:'var(--r)', bold:true, sep:true },
+    { label:'SALDO NETO', key:'saldo', bold:true, sep:true, big:true, color:'dyn' },
+    { label:'SALDO ACUMULADO', key:'acum', bold:true, sep:true, big:true, color:'dyn' },
+  ];
+
+  rowDef.forEach(rd => {
+    const bdr = rd.sep ? 'border-top:2px solid var(--border);' : '';
+    const pad = rd.indent===2?'padding-left:24px':rd.indent===1?'padding-left:14px':'';
+    const fs  = rd.big ? 'font-size:13px;' : '';
+    h += `<tr style="${bdr}${rd.sep?'background:var(--gray)':''}">
+      <td style="padding:6px 8px;${pad};${fs}font-weight:${rd.bold?600:400};color:var(--text);white-space:nowrap;border-bottom:.5px solid var(--border)">
+        ${rd.warn?'<span style="color:#d97706">⚠ </span>':''}${rd.label}
+      </td>`;
+    rows.forEach(r => {
+      const v = rd.calc ? rd.calc(r) : r[rd.key];
+      const col = rd.color==='dyn' ? (v>=0?'var(--g)':'var(--r)') : rd.color;
+      h += `<td style="text-align:right;padding:6px 8px;font-weight:${rd.bold?600:400};${fs}color:${col};font-variant-numeric:tabular-nums;white-space:nowrap;border-bottom:.5px solid var(--border)">${fmtV(v)}</td>`;
+    });
+    h += '</tr>';
+  });
+
+  h += `</tbody></table></div>`;
+
+  // Mini legend
+  h += `<div style="margin-top:14px;padding:12px 14px;background:var(--gray);border-radius:8px;font-size:11px;color:var(--text3);line-height:1.8">
+    <strong style="color:var(--text)">Nota metodológica:</strong>
+    Ingresos base = presupuesto sin IVA (reales para ene-mar).
+    IVA cobrado = ${p.pct_iva_ing}% de ingresos × 21/121 (tasa implícita).
+    Cobranza = ${p.tasa}% cobrado en el mes corriente.
+    Blanqueo = +${fmtN(p.vf_mes)} ingresos / -${fmtN(p.pt_mes)} egresos, neto caja ≈ 0.
+    IVA AFIP (⚠) = IVA neto de 3 meses atrás: débito facturas - crédito proveedores + ${p.iva_neto_pct}% de blanqueo.
+    Los meses marcados en <span style="color:var(--g)">verde</span> son datos reales.
+  </div></div>`;
+
+  el.innerHTML = h;
+}
+
 </script>
 </body>
 </html>
