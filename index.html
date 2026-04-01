@@ -1062,6 +1062,11 @@ function renderEBITDA() {
                  : sym+Math.round(a).toLocaleString('es-AR');
     return (c < 0 ? '-' : '+') + s;
   };
+  const fmtTot = (v) => {
+    if (!v && v!==0) return '—'; const a=Math.abs(v), sym='$';
+    const s = a>=1e9?sym+(a/1e9).toFixed(2)+'B':a>=1e6?sym+(a/1e6).toFixed(1)+'M':a>=1e3?sym+Math.round(a/1e3)+'K':sym+Math.round(a);
+    return (v<0?'-':'+')+s;
+  };
   const realCol = v => !v||v===0 ? 'var(--text3)' : v>0 ? 'var(--g)' : 'var(--r)';
   const badge = (r, b) => {
     if (r===null || !b) return '';
@@ -1074,9 +1079,9 @@ function renderEBITDA() {
   const getBsub = (m, sub) => { const d=bud[m]?.[sub]; if(!d) return 0; return Object.keys(d).reduce((s,k)=>s+(getBv(m,sub,k)||0),0); };
 
   const dispMeses = getMeses();
+  const showTotal = st.mes === 'todos';
   const MN = {'2026-01':'Ene','2026-02':'Feb','2026-03':'Mar','2026-04':'Abr','2026-05':'May','2026-06':'Jun','2026-07':'Jul','2026-08':'Ago','2026-09':'Sep','2026-10':'Oct','2026-11':'Nov','2026-12':'Dic'};
 
-  // Expose toggle functions on the element to avoid inline string escaping issues
   el._togSub = (i) => { const k='s'+i; st.openSubs.has(k)?st.openSubs.delete(k):st.openSubs.add(k); renderEBITDA(); };
   el._togC   = (k) => { st.openCuentas.has(k)?st.openCuentas.delete(k):st.openCuentas.add(k); renderEBITDA(); };
 
@@ -1097,27 +1102,74 @@ function renderEBITDA() {
     ${btn('ARS','ARS',st.moneda,'moneda')}${btn('USD','USD',st.moneda,'moneda')}
   </div>`;
 
+  // Helper: build a single-mes or multi-mes cell set for a value
+  const multiCell = (m, rv, bvv, bold=false, big=false, darkBg=false) => {
+    const fs = big ? '13px' : '11px', fw = bold ? '500' : '400';
+    const rc = darkBg ? (rv!==null?(rv>=0?'#4ade80':'#f87171'):'rgba(255,255,255,.4)') : (rv!==null?realCol(rv):'var(--text3)');
+    const bc = darkBg ? 'rgba(255,255,255,.5)' : 'var(--text3)';
+    let s = '';
+    if (REAL_M.includes(m)) s += `<td style="text-align:right;padding:${big?10:5}px 7px;font-size:${fs};font-weight:${fw};font-variant-numeric:tabular-nums;white-space:nowrap;color:${rc}">${rv!==null?fmt(rv,m,!big):'—'}</td>`;
+    s += `<td style="text-align:right;padding:${big?10:5}px 7px;font-size:${fs};font-weight:${fw};font-variant-numeric:tabular-nums;white-space:nowrap;color:${bc}">${bvv!==null&&bvv!==0?fmt(bvv,m,!big):'—'}</td>`;
+    return s;
+  };
+
+  // Build table header
   h += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>
     <th style="text-align:left;padding:6px 7px;font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1.5px solid var(--border);min-width:130px">Concepto</th>`;
 
   if (dispMeses.length === 1) {
     const m=dispMeses[0], hasR=REAL_M.includes(m);
-    h += `<th style="text-align:right;padding:6px 7px;font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">Real</th>
-          <th style="text-align:right;padding:6px 7px;font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">Ppto</th>`;
-    if (hasR) h += `<th style="text-align:right;padding:6px 7px;font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">Desv.</th>`;
+    h += `<th style="text-align:right;padding:6px 7px;font-size:10px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">Real</th>
+          <th style="text-align:right;padding:6px 7px;font-size:10px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">Ppto</th>`;
+    if (hasR) h += `<th style="text-align:right;padding:6px 7px;font-size:10px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">Desv.</th>`;
   } else {
     dispMeses.forEach(m => {
-      const hasR=REAL_M.includes(m);
-      h += `<th colspan="${hasR?2:1}" style="text-align:center;padding:6px 7px;font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">${MN[m]||m}</th>`;
+      const nc = REAL_M.includes(m) ? 2 : 1;
+      h += `<th colspan="${nc}" style="text-align:center;padding:6px 7px;font-size:10px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">${MN[m]||m}</th>`;
     });
+    if (showTotal) h += `<th colspan="2" style="text-align:center;padding:6px 7px;font-size:10px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border);border-left:2px solid var(--border)">Total año</th>`;
     h += '</tr><tr><th></th>';
     dispMeses.forEach(m => {
-      const hasR=REAL_M.includes(m);
-      if (hasR) h += `<th style="text-align:right;padding:4px 7px;font-size:9px;color:var(--g);background:var(--gray);border-bottom:1px solid var(--border)">R</th>`;
+      if (REAL_M.includes(m)) h += `<th style="text-align:right;padding:4px 7px;font-size:9px;color:var(--g);background:var(--gray);border-bottom:1px solid var(--border)">R</th>`;
       h += `<th style="text-align:right;padding:4px 7px;font-size:9px;color:var(--text3);background:var(--gray);border-bottom:1px solid var(--border)">P</th>`;
     });
+    if (showTotal) {
+      h += `<th style="text-align:right;padding:4px 7px;font-size:9px;color:var(--g);background:var(--gray);border-bottom:1px solid var(--border);border-left:2px solid var(--border)">R</th>`;
+      h += `<th style="text-align:right;padding:4px 7px;font-size:9px;color:var(--text3);background:var(--gray);border-bottom:1px solid var(--border)">P</th>`;
+    }
   }
   h += '</tr></thead><tbody>';
+
+  // Special row builder (EBITDA / CM style black row)
+  const specialRow = (label, subList, darkBg=true) => {
+    const bg = darkBg ? 'var(--text)' : '#1a1a2e';
+    const erv = dispMeses.map(m => REAL_M.includes(m) ? subList.reduce((s,sb)=>s+getRsub(m,sb),0) : null);
+    const ebv = dispMeses.map(m => subList.reduce((s,sb)=>s+getBsub(m,sb),0));
+    let row = `<tr style="background:${bg}"><td style="padding:10px 7px;font-weight:500;font-size:13px;color:var(--card)">${label}</td>`;
+    if (dispMeses.length === 1) {
+      const m=dispMeses[0], hasR=REAL_M.includes(m), rv=hasR?erv[0]:null, bvv=ebv[0];
+      const rI=hasR?getRsub(m,'INGRESOS'):null, bI=getBsub(m,'INGRESOS');
+      const rmg=rI&&rv!==null?Math.round(rv/rI*1000)/10:null, bmg=bI?Math.round(bvv/bI*1000)/10:null;
+      const rc = darkBg ? (rv!==null?(rv>=0?'#4ade80':'#f87171'):'rgba(255,255,255,.4)') : (rv!==null?(rv>=0?'#4ade80':'#f87171'):'rgba(255,255,255,.4)');
+      row += `<td style="text-align:right;padding:10px 7px;font-size:13px;font-weight:500;color:${rc};font-variant-numeric:tabular-nums">${rv!==null?fmt(rv,m):''}<span style="font-size:10px;opacity:.6;margin-left:3px">${rmg!==null?rmg+'%':''}</span></td>`;
+      row += `<td style="text-align:right;padding:10px 7px;font-size:13px;font-weight:500;color:rgba(255,255,255,.5);font-variant-numeric:tabular-nums">${fmt(bvv,m)}<span style="font-size:10px;opacity:.5;margin-left:3px">${bmg!==null?bmg+'%':''}</span></td>`;
+      if (hasR) row += `<td style="text-align:right;padding:10px 7px">${rv!==null?badge(rv,bvv):''}</td>`;
+    } else {
+      let totR=0, totB=0, totRcount=0;
+      dispMeses.forEach((m,i) => {
+        const hasR=REAL_M.includes(m), rv=erv[i], bvv=ebv[i];
+        const ing=hasR?getRsub(m,'INGRESOS'):getBsub(m,'INGRESOS'), mg=ing?Math.round((rv!==null?rv:bvv)/ing*1000)/10:0;
+        if (hasR) { row += `<td style="text-align:right;padding:10px 7px;font-size:11px;font-weight:500;color:${rv>=0?'#4ade80':'#f87171'};font-variant-numeric:tabular-nums">${fmt(rv,m,true)}<span style="font-size:9px;opacity:.6;margin-left:2px">${mg}%</span></td>`; totR+=rv; totRcount++; }
+        row += `<td style="text-align:right;padding:10px 7px;font-size:11px;font-weight:500;color:rgba(255,255,255,.5);font-variant-numeric:tabular-nums">${fmt(bvv,m,true)}</td>`;
+        totB+=bvv;
+      });
+      if (showTotal) {
+        row += `<td style="text-align:right;padding:10px 7px;font-size:12px;font-weight:700;color:${totR>=0?'#4ade80':'#f87171'};font-variant-numeric:tabular-nums;border-left:2px solid rgba(255,255,255,.2)">${totRcount?fmtTot(totR):'—'}</td>`;
+        row += `<td style="text-align:right;padding:10px 7px;font-size:12px;font-weight:700;color:rgba(255,255,255,.6);font-variant-numeric:tabular-nums">${fmtTot(totB)}</td>`;
+      }
+    }
+    return row + '</tr>';
+  };
 
   ALL_SUBS.forEach((sub, subIdx) => {
     const subKey = 's' + subIdx;
@@ -1125,10 +1177,10 @@ function renderEBITDA() {
     const sv  = dispMeses.map(m => getRsub(m, sub));
     const bv2 = dispMeses.map(m => getBsub(m, sub));
 
-    // Section header — collapsed by default, click to expand
+    // Section header row
     h += `<tr style="background:var(--gray);cursor:pointer" onclick="document.getElementById('ebitda-content')._togSub(${subIdx})">
       <td style="padding:8px 7px;font-weight:500;font-size:11px;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;border-top:1px solid var(--border)">
-        <span style="font-size:9px;display:inline-block;margin-right:5px;transition:transform .2s;${isSubOpen?'transform:rotate(90deg)':''}">▶</span>${SL[sub]}
+        <span style="font-size:9px;display:inline-block;margin-right:5px;${isSubOpen?'transform:rotate(90deg)':''}">▶</span>${SL[sub]}
       </td>`;
 
     if (dispMeses.length === 1) {
@@ -1137,49 +1189,58 @@ function renderEBITDA() {
       h += `<td style="text-align:right;padding:8px 7px;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--text3)">${fmt(bvv,m)}</td>`;
       if (hasR) h += `<td style="text-align:right;padding:8px 7px">${rv!==null?badge(rv,bvv):'—'}</td>`;
     } else {
+      let totR=0, totB=0, totRc=0;
       dispMeses.forEach((m,i) => {
         const hasR=REAL_M.includes(m), rv=hasR?sv[i]:null, bvv=bv2[i];
-        if (hasR) h += `<td style="text-align:right;padding:7px;font-size:11px;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap;color:${rv!==null?realCol(rv):'var(--text3)'}">${rv!==null?fmt(rv,m,true):'—'}</td>`;
+        if (hasR) { h += `<td style="text-align:right;padding:7px;font-size:11px;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap;color:${rv!==null?realCol(rv):'var(--text3)'}">${rv!==null?fmt(rv,m,true):'—'}</td>`; totR+=rv||0; totRc++; }
         h += `<td style="text-align:right;padding:7px;font-size:11px;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--text3)">${fmt(bvv,m,true)}</td>`;
+        totB+=bvv||0;
       });
+      if (showTotal) {
+        h += `<td style="text-align:right;padding:7px;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:${realCol(totR)};border-left:2px solid var(--border)">${totRc?fmtTot(totR):'—'}</td>`;
+        h += `<td style="text-align:right;padding:7px;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--text3)">${fmtTot(totB)}</td>`;
+      }
     }
     h += '</tr>';
 
-    // Cuenta rows — only when section is open
+    // Cuenta rows when expanded
     if (isSubOpen) {
       const allC = [...new Set([
         ...Object.keys(erDetail['2026-01']?.[sub]||{}),
         ...Object.keys(bud['2026-01']?.[sub]||{})
       ])];
-
       allC.forEach((c, ci) => {
         const cKey = subIdx + '_' + ci;
         const isOpen = st.openCuentas.has(cKey);
         const hasAny = dispMeses.some(m => { const rv=getRv(m,sub,c),bv=getBv(m,sub,c); return (rv!==null&&rv!==0)||(bv!==null&&(bv||0)!==0); });
         if (!hasAny) return;
 
-        const escapedCKey = cKey; // pure numbers/underscore, safe
-        h += `<tr style="border-bottom:.5px solid var(--border);cursor:pointer" onclick="document.getElementById('ebitda-content')._togC('${escapedCKey}')">
+        h += `<tr style="border-bottom:.5px solid var(--border);cursor:pointer" onclick="document.getElementById('ebitda-content')._togC('${cKey}')">
           <td style="padding:5px 7px 5px 24px;color:var(--text)">
-            <span style="font-size:9px;color:var(--text3);display:inline-block;margin-right:5px;transition:transform .2s;${isOpen?'transform:rotate(90deg)':''}">▶</span>${c}
+            <span style="font-size:9px;color:var(--text3);display:inline-block;margin-right:5px;${isOpen?'transform:rotate(90deg)':''}">▶</span>${c}
           </td>`;
 
         if (dispMeses.length === 1) {
-          const m=dispMeses[0], hasR=REAL_M.includes(m);
-          const rv=hasR?getRv(m,sub,c):null, bv=getBv(m,sub,c);
+          const m=dispMeses[0], hasR=REAL_M.includes(m), rv=hasR?getRv(m,sub,c):null, bv=getBv(m,sub,c);
           h += `<td style="text-align:right;padding:5px 7px;font-variant-numeric:tabular-nums;white-space:nowrap;color:${rv!==null?realCol(rv):'var(--text3)'}">${rv!==null?fmt(rv,m):'—'}</td>`;
           h += `<td style="text-align:right;padding:5px 7px;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--text3)">${bv!==null?fmt(bv,m):'—'}</td>`;
           if (hasR) h += `<td style="text-align:right;padding:5px 7px">${rv!==null&&bv!==null?badge(rv,bv):'—'}</td>`;
         } else {
+          let totCR=0, totCB=0, totCRc=0;
           dispMeses.forEach(m => {
             const hasR=REAL_M.includes(m), rv=hasR?getRv(m,sub,c):null, bv=getBv(m,sub,c);
-            if (hasR) h += `<td style="text-align:right;padding:5px 7px;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap;color:${rv!==null?realCol(rv):'var(--text3)'}">${rv!==null?fmt(rv,m,true):'—'}</td>`;
+            if (hasR) { h += `<td style="text-align:right;padding:5px 7px;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap;color:${rv!==null?realCol(rv):'var(--text3)'}">${rv!==null?fmt(rv,m,true):'—'}</td>`; totCR+=rv||0; totCRc++; }
             h += `<td style="text-align:right;padding:5px 7px;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--text3)">${bv!==null?fmt(bv,m,true):'—'}</td>`;
+            totCB+=(bv||0);
           });
+          if (showTotal) {
+            h += `<td style="text-align:right;padding:5px 7px;font-size:11px;font-variant-numeric:tabular-nums;color:${realCol(totCR)};border-left:2px solid var(--border)">${totCRc?fmtTot(totCR):'—'}</td>`;
+            h += `<td style="text-align:right;padding:5px 7px;font-size:11px;font-variant-numeric:tabular-nums;color:var(--text3)">${fmtTot(totCB)}</td>`;
+          }
         }
         h += '</tr>';
 
-        // Sede rows — only when cuenta is open
+        // Sede breakdown
         if (st.sede === 'todas' && isOpen) {
           const allSedes = [...new Set([...ALL_SEDES,...Object.keys(bud['2026-01']?.[sub]?.[c]||{})])];
           allSedes.forEach(se => {
@@ -1188,8 +1249,7 @@ function renderEBITDA() {
             h += `<tr style="background:var(--gray);border-bottom:.5px solid var(--border)">
               <td style="padding:3px 7px 3px 42px;font-size:11px;color:var(--text3)">${se}</td>`;
             if (dispMeses.length === 1) {
-              const m=dispMeses[0], hasR=REAL_M.includes(m);
-              const rv=hasR?(erDetail[m]?.[sub]?.[c]?.[se]||0):null, bv=bud[m]?.[sub]?.[c]?.[se]||0;
+              const m=dispMeses[0], hasR=REAL_M.includes(m), rv=hasR?(erDetail[m]?.[sub]?.[c]?.[se]||0):null, bv=bud[m]?.[sub]?.[c]?.[se]||0;
               h += `<td style="text-align:right;padding:3px 7px;font-size:11px;font-variant-numeric:tabular-nums;color:${rv!==null?realCol(rv):'var(--text3)'}">${rv!==null?fmt(rv,m):'—'}</td>`;
               h += `<td style="text-align:right;padding:3px 7px;font-size:11px;font-variant-numeric:tabular-nums;color:var(--text3)">${fmt(bv,m)}</td>`;
               if (hasR) h += `<td style="text-align:right;padding:3px 7px">${rv!==null&&bv?badge(rv,bv):'—'}</td>`;
@@ -1199,6 +1259,7 @@ function renderEBITDA() {
                 if (hasR) h += `<td style="text-align:right;padding:3px 7px;font-size:11px;font-variant-numeric:tabular-nums;color:${rv?realCol(rv):'var(--text3)'}">${rv?fmt(rv,m,true):'—'}</td>`;
                 h += `<td style="text-align:right;padding:3px 7px;font-size:11px;font-variant-numeric:tabular-nums;color:var(--text3)">${bv?fmt(bv,m,true):'—'}</td>`;
               });
+              if (showTotal) { h += `<td style="border-left:2px solid var(--border)"></td><td></td>`; }
             }
             h += '</tr>';
           });
@@ -1206,37 +1267,20 @@ function renderEBITDA() {
       });
     }
 
-    // EBITDA row after COSTOS DE LA MARCA
+    // After COSTOS VARIABLES: Contribución Marginal row
+    if (sub === 'COSTOS VARIABLES POR SEDE') {
+      h += specialRow('Contribución marginal', ['INGRESOS','COSTOS VARIABLES POR SEDE'], false);
+    }
+    // After COSTOS DE LA MARCA: EBITDA row
     if (sub === 'COSTOS DE LA MARCA') {
-      const eS=['INGRESOS','COSTOS VARIABLES POR SEDE','COSTOS DE LA MARCA'];
-      const erv=dispMeses.map(m=>REAL_M.includes(m)?eS.reduce((s,s2)=>s+getRsub(m,s2),0):null);
-      const ebv=dispMeses.map(m=>eS.reduce((s,s2)=>s+getBsub(m,s2),0));
-      h += `<tr style="background:var(--text)"><td style="padding:10px 7px;font-weight:500;font-size:13px;color:var(--card)">EBITDA</td>`;
-      if (dispMeses.length === 1) {
-        const m=dispMeses[0], hasR=REAL_M.includes(m), rv=hasR?erv[0]:null, bvv=ebv[0];
-        const rI=hasR?getRsub(m,'INGRESOS'):null, bI=getBsub(m,'INGRESOS');
-        const rmg=rI&&rv!==null?Math.round(rv/rI*1000)/10:null, bmg=bI?Math.round(bvv/bI*1000)/10:null;
-        h += `<td style="text-align:right;padding:10px 7px;font-size:13px;font-weight:500;color:${rv!==null?(rv>=0?'#4ade80':'#f87171'):'rgba(255,255,255,.4)'};font-variant-numeric:tabular-nums">${rv!==null?fmt(rv,m):''}<span style="font-size:10px;opacity:.6;margin-left:3px">${rmg!==null?rmg+'%':''}</span></td>`;
-        h += `<td style="text-align:right;padding:10px 7px;font-size:13px;font-weight:500;color:rgba(255,255,255,.5);font-variant-numeric:tabular-nums">${fmt(bvv,m)}<span style="font-size:10px;opacity:.5;margin-left:3px">${bmg!==null?bmg+'%':''}</span></td>`;
-        if (hasR) h += `<td style="text-align:right;padding:10px 7px">${rv!==null?badge(rv,bvv):''}</td>`;
-      } else {
-        dispMeses.forEach((m,i) => {
-          const hasR=REAL_M.includes(m), rv=erv[i], bvv=ebv[i];
-          const ing=hasR?getRsub(m,'INGRESOS'):getBsub(m,'INGRESOS');
-          const val=rv!==null?rv:bvv, mg=ing?Math.round(val/ing*1000)/10:0;
-          if (hasR) h += `<td style="text-align:right;padding:10px 7px;font-size:11px;font-weight:500;color:${rv>=0?'#4ade80':'#f87171'};font-variant-numeric:tabular-nums">${fmt(rv,m,true)}<span style="font-size:9px;opacity:.6;margin-left:2px">${mg}%</span></td>`;
-          h += `<td style="text-align:right;padding:10px 7px;font-size:11px;font-weight:500;color:rgba(255,255,255,.5);font-variant-numeric:tabular-nums">${fmt(bvv,m,true)}</td>`;
-        });
-      }
-      h += '</tr>';
+      h += specialRow('EBITDA', ['INGRESOS','COSTOS VARIABLES POR SEDE','COSTOS DE LA MARCA'], true);
     }
   });
 
   // Resultado neto
   const nrv=dispMeses.map(m=>REAL_M.includes(m)?ALL_SUBS.reduce((s,sb)=>s+getRsub(m,sb),0):null);
   const nbv=dispMeses.map(m=>ALL_SUBS.reduce((s,sb)=>s+getBsub(m,sb),0));
-  h += `<tr style="border-top:2px solid var(--border);border-bottom:2px solid var(--border)">
-    <td style="padding:10px 7px;font-weight:500;font-size:13px">Resultado neto</td>`;
+  h += `<tr style="border-top:2px solid var(--border)"><td style="padding:10px 7px;font-weight:500;font-size:13px">Resultado neto</td>`;
   if (dispMeses.length === 1) {
     const m=dispMeses[0], hasR=REAL_M.includes(m), rv=hasR?nrv[0]:null, bvv=nbv[0];
     const rI=hasR?getRsub(m,'INGRESOS'):null, bI=getBsub(m,'INGRESOS');
@@ -1244,17 +1288,23 @@ function renderEBITDA() {
     h += `<td style="text-align:right;padding:10px 7px;font-weight:500;font-size:13px;font-variant-numeric:tabular-nums;color:var(--text3)">${fmt(bvv,m)}<span style="font-size:10px;color:var(--text3);margin-left:3px">${bI?Math.round(bvv/bI*1000)/10+'%':''}</span></td>`;
     if (hasR) h += `<td style="text-align:right;padding:10px 7px">${rv!==null?badge(rv,bvv):'—'}</td>`;
   } else {
+    let totNR=0, totNB=0, totNRc=0;
     dispMeses.forEach((m,i) => {
       const hasR=REAL_M.includes(m), rv=nrv[i], bvv=nbv[i];
-      if (hasR) h += `<td style="text-align:right;padding:10px 7px;font-weight:500;font-size:11px;font-variant-numeric:tabular-nums;color:${realCol(rv)}">${fmt(rv,m,true)}</td>`;
+      if (hasR) { h += `<td style="text-align:right;padding:10px 7px;font-weight:500;font-size:11px;font-variant-numeric:tabular-nums;color:${realCol(rv)}">${fmt(rv,m,true)}</td>`; totNR+=rv||0; totNRc++; }
       h += `<td style="text-align:right;padding:10px 7px;font-weight:500;font-size:11px;font-variant-numeric:tabular-nums;color:var(--text3)">${fmt(bvv,m,true)}</td>`;
+      totNB+=bvv||0;
     });
+    if (showTotal) {
+      h += `<td style="text-align:right;padding:10px 7px;font-weight:700;font-size:12px;font-variant-numeric:tabular-nums;color:${realCol(totNR)};border-left:2px solid var(--border)">${totNRc?fmtTot(totNR):'—'}</td>`;
+      h += `<td style="text-align:right;padding:10px 7px;font-weight:700;font-size:12px;font-variant-numeric:tabular-nums;color:var(--text3)">${fmtTot(totNB)}</td>`;
+    }
   }
   h += '</tr></tbody></table></div>';
 
   el.innerHTML = h;
 
-  // Attach toggle functions AFTER innerHTML is set
+  // Attach toggle functions AFTER innerHTML (critical — so they survive re-render)
   el._togSub = (i) => { const k='s'+i; st.openSubs.has(k)?st.openSubs.delete(k):st.openSubs.add(k); renderEBITDA(); };
   el._togC   = (k) => { st.openCuentas.has(k)?st.openCuentas.delete(k):st.openCuentas.add(k); renderEBITDA(); };
 }
@@ -1282,12 +1332,16 @@ function renderObjetivos() {
     <div class="kpi ${cls(aI)}"><div class="kpi-label">Cumplimiento ingresos</div><div class="kpi-val">${aI}%</div><div class="kpi-sub">promedio del período</div></div>
     <div class="kpi ${cls(aE)}"><div class="kpi-label">Cumplimiento EBITDA</div><div class="kpi-val">${aE}%</div><div class="kpi-sub">promedio del período</div></div>
     <div class="kpi ${bP>=100?'green':'amber'}"><div class="kpi-label">Mejor mes</div><div class="kpi-val">${bM?mn(bM):'—'}</div><div class="kpi-sub">${Math.round(bP)}% de cumplimiento</div></div>`;
-  const mkOT=(rfn,ok)=>{const rows=(data.meses||[]).map(m=>{const real=rfn(m),objetivo=(obj[m]||{})[ok]||0,diff=real-objetivo,pct=objetivo?Math.round(Math.abs(real)/Math.abs(objetivo)*100):null,bc=pct===null?'':pct>=100?'bg':pct>=80?'ba':'br';return`<tr><td class="tdn">${mn(m)}</td><td class="tr ${real>=0?'g':'r'}">${fmtP(real)}</td><td class="tr">${objetivo?fmtP(objetivo):'—'}</td><td class="tr ${diff>=0?'g':'r'}">${objetivo?(diff>=0?'+':'')+fmtP(diff):'—'}</td><td style="text-align:center">${pct!==null?`<span class="badge ${bc}">${pct}%</span>`:'—'}</td></tr>`;}).join('');return`<table><thead><tr><th>Mes</th><th class="tr">Real</th><th class="tr">Objetivo</th><th class="tr">Diferencia</th><th style="text-align:center">Cumpl.</th></tr></thead><tbody>${rows}</tbody></table>`;};
-  document.getElementById('obj-ing-table').innerHTML=mkOT(m=>(data.ebitda||{})[m]?.ingresos||0,'INGRESOS');
-  document.getElementById('obj-ebitda-table').innerHTML=mkOT(m=>(data.ebitda||{})[m]?.ebitda||0,'EBITDA');
-  document.getElementById('obj-cv-table').innerHTML=mkOT(m=>Math.abs((data.ebitda||{})[m]?.costos_sede||0),'COSTOS VARIABLES POR SEDE');
-  const ir=(data.meses||[]).map(m=>(data.ebitda||{})[m]?.ingresos||0),io=(data.meses||[]).map(m=>(obj[m]||{}).INGRESOS||0);
-  const er=(data.meses||[]).map(m=>(data.ebitda||{})[m]?.ebitda||0),eo=(data.meses||[]).map(m=>(obj[m]||{}).EBITDA||0);
+  const mkOT=(rfn,ok)=>{const rows=(data.meses||[]).map(m=>{const real=typeof rfn==='function'?rfn(m):0,objetivo=(obj[m]||{})[ok]||0,diff=real-objetivo,pct=objetivo?Math.round(Math.abs(real)/Math.abs(objetivo)*100):null,bc=pct===null?'':pct>=100?'bg':pct>=80?'ba':'br';return`<tr><td class="tdn">${mn(m)}</td><td class="tr ${real>=0?'g':'r'}">${fmtP(real)}</td><td class="tr">${objetivo?fmtP(objetivo):'—'}</td><td class="tr ${diff>=0?'g':'r'}">${objetivo?(diff>=0?'+':'')+fmtP(diff):'—'}</td><td style="text-align:center">${pct!==null?`<span class="badge ${bc}">${pct}%</span>`:'—'}</td></tr>`;}).join('');return`<table><thead><tr><th>Mes</th><th class="tr">Real</th><th class="tr">Objetivo</th><th class="tr">Diferencia</th><th style="text-align:center">Cumpl.</th></tr></thead><tbody>${rows}</tbody></table>`;};
+  const erD=data.er_detail||{};
+  const erIng=m=>Object.values(erD[m]?.['INGRESOS']||{}).reduce((s,v)=>s+(v._total||0),0)||((data.ebitda||{})[m]?.ingresos||0);
+  const erCV=m=>Math.abs(Object.values(erD[m]?.['COSTOS VARIABLES POR SEDE']||{}).reduce((s,v)=>s+(v._total||0),0))||Math.abs((data.ebitda||{})[m]?.costos_sede||0);
+  const erEB=m=>{const i=erIng(m),c=erCV(m),cm=Math.abs(Object.values(erD[m]?.['COSTOS DE LA MARCA']||{}).reduce((s,v)=>s+(v._total||0),0)||Math.abs((data.ebitda||{})[m]?.costos_marca||0));return i-c-cm;};
+  document.getElementById('obj-ing-table').innerHTML=mkOT(erIng,'INGRESOS');
+  document.getElementById('obj-ebitda-table').innerHTML=mkOT(erEB,'EBITDA');
+  document.getElementById('obj-cv-table').innerHTML=mkOT(erCV,'COSTOS VARIABLES POR SEDE');
+  const ir=(data.meses||[]).map(m=>erIng(m)),io=(data.meses||[]).map(m=>(obj[m]||{}).INGRESOS||0);
+  const er=(data.meses||[]).map(m=>erEB(m)),eo=(data.meses||[]).map(m=>(obj[m]||{}).EBITDA||0);
   mkC('chart-obj-ing',{type:'bar',data:{labels:(data.meses||[]).map(mn),datasets:[{label:'Real',data:ir,backgroundColor:'rgba(37,99,235,.7)',borderRadius:6},{label:'Objetivo',data:io,backgroundColor:'rgba(37,99,235,.2)',borderRadius:4,borderWidth:1.5,borderColor:'rgba(37,99,235,.5)'}]},options:cOpts(v=>fmt(v))});
   mkC('chart-obj-ebitda',{type:'bar',data:{labels:(data.meses||[]).map(mn),datasets:[{label:'Real',data:er,backgroundColor:er.map(v=>v>=0?'rgba(22,163,74,.7)':'rgba(220,38,38,.7)'),borderRadius:6},{label:'Objetivo',data:eo,backgroundColor:'rgba(22,163,74,.2)',borderRadius:4,borderWidth:1.5,borderColor:'rgba(22,163,74,.5)'}]},options:cOpts(v=>fmt(v))});
 }
@@ -1726,10 +1780,6 @@ function genMail() {
     </table>`;
   })()}
   <div style="border-top:1px solid #f0f0ee;margin:20px 0"></div>
-  <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#999;font-family:Arial,sans-serif;margin-bottom:11px">ALERTAS Y ACCIONES URGENTES</div>
-  ${vencidos>0?`<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fef2f2;border-left:3px solid #dc2626;margin-bottom:7px"><tr><td style="padding:10px 12px"><div style="font-size:12px;font-weight:700;color:#1a1a18;font-family:Arial,sans-serif;margin-bottom:2px">⚠ Clientes vencidos sin cobrar: ${fmtP(vencidos)}</div><div style="font-size:11px;color:#666;font-family:Arial,sans-serif">Facturas con vencimiento pasado pendientes. Gestión urgente esta semana.</div></td></tr></table>`:''}
-  ${totalProv>0?`<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fffbeb;border-left:3px solid #d97706;margin-bottom:7px"><tr><td style="padding:10px 12px"><div style="font-size:12px;font-weight:700;color:#1a1a18;font-family:Arial,sans-serif;margin-bottom:2px">📋 Deuda con proveedores: ${fmtP(totalProv)}</div><div style="font-size:11px;color:#666;font-family:Arial,sans-serif">Revisá los vencimientos prioritarios con tus principales proveedores.</div></td></tr></table>`:''}
-  <div style="border-top:1px solid #f0f0ee;margin:20px 0"></div>
   <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#999;font-family:Arial,sans-serif;margin-bottom:11px">TOP DEUDORES</div>
   <table width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr style="background:#f8f8f6">
@@ -1740,6 +1790,7 @@ function genMail() {
     ${(()=>{const total=top5d.reduce((s,[,v])=>s+v,0);return total>0?`<tr><td style="padding:8px 0;font-family:Arial,sans-serif;font-size:12px;font-weight:700;color:#1a1a18">Total a cobrar</td><td align="right" style="padding:8px 0;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#dc2626">${fmtP(total)}</td></tr>`:''})()}
   </table>
   <div style="border-top:1px solid #f0f0ee;margin:20px 0"></div>
+  <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#999;font-family:Arial,sans-serif;margin-bottom:11px">ALERTAS Y ACCIONES URGENTES</div>
   ${(()=>{
     // Alertas con colores
     const alertas=[];
