@@ -2028,27 +2028,23 @@ function renderCFProy() {
   const ALL_M = Object.keys(bud).sort();
   const REAL_M = (data.meses || []).filter(m => erD[m]);
   const IVA   = 21/121;
-  const today_ref = today; // fecha de referencia del dashboard
 
-  // ── Estado de cada mes ──
+  // ── Estado del mes: 'real' | 'curso' | 'proy' ──
   const getState = m => {
     const [y,mo] = m.split('-').map(Number);
+    const fin = new Date(y, mo, 0, 23, 59, 59); // último día del mes
     const ini = new Date(y, mo-1, 1);
-    const fin = new Date(y, mo, 0);
-    fin.setHours(23,59,59);
-    if (fin < today_ref) return 'real';
-    if (ini > today_ref) return 'proy';
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    if (fin < hoy) return 'real';
+    if (ini > hoy) return 'proy';
     return 'curso';
   };
 
   // ── Params ──
   if (!el._cf) el._cf = {
-    tasa_mes: 87,      // % cobrado en el mismo mes (histórico 87%)
-    tasa_rez: 13,      // % cobrado en el mes siguiente (rezago)
-    pct_iva_ing: 68,   // % ingresos con IVA
-    pct_iva_eg:  66,   // % egresos con IVA
-    vf_mes: 50000000,  // Ventas Financieras blanqueo (proyectado)
-    iva_neto_pct: 10.5,
+    tasa_mes: 87, tasa_rez: 13,
+    pct_iva_ing: 68, pct_iva_eg: 66,
+    vf_mes: 50000000, iva_neto_pct: 10.5,
     moneda: 'ARS',
   };
   const p = el._cf;
@@ -2057,8 +2053,8 @@ function renderCFProy() {
   const conv = (v,m) => p.moneda==='USD' ? v/tcM(m) : v;
   const sym  = p.moneda==='USD' ? 'U$S ' : '$';
   const fmtN = v => {
-    if (!v && v!==0) return '—';
-    if (v===0) return sym+'0';
+    if (v === null || v === undefined) return '—';
+    if (Math.abs(v) < 1) return sym+'0';
     const a=Math.abs(v), s=a>=1e9?sym+(a/1e9).toFixed(2)+'B':a>=1e6?sym+(a/1e6).toFixed(1)+'M':sym+Math.round(a).toLocaleString('es-AR');
     return (v<0?'-':'+')+s;
   };
@@ -2070,18 +2066,22 @@ function renderCFProy() {
   const budSum = (m,sec) => Object.values(bud[m]?.[sec]||{})
     .reduce((s,v)=>s+Object.values(v).reduce((a,b)=>a+b,0),0);
 
-  // Suma de cobranzas por mes y subcategoria
-  const cobSub = (m,sub) => cob_r.filter(r=>r.mes===m&&r.subcategoria===sub).reduce((s,r)=>s+r.importe,0);
-  const pagSub = (m,sub) => pag_r.filter(r=>r.mes===m&&r.subcategoria===sub).reduce((s,r)=>s+r.importe,0);
+  // Suma de cobranzas/pagos por mes y subcategoria — usa datos REALES
+  const cobSub = (m,sub) => cob_r
+    .filter(r=>r.mes===m && r.subcategoria===sub)
+    .reduce((s,r)=>s+r.importe,0);
+  const pagSub = (m,sub) => pag_r
+    .filter(r=>r.mes===m && r.subcategoria===sub)
+    .reduce((s,r)=>s+r.importe,0);
   const impMes = m => imp_r.filter(r=>r.mes===m).reduce((s,r)=>s+r.importe,0);
 
   // ── IVA AFIP (pago 3 meses después) ──
-  const ivaAfip = {'2026-02': 4032000}; // IVA histórico nov 2025 pagado en feb
+  const ivaAfip = {'2026-02': 4032000};
   ALL_M.forEach(m => {
     const [y,mo] = m.split('-').map(Number);
     const nm = mo+3;
     const payM = `${y+Math.floor((nm-1)/12)}-${String(((nm-1)%12)+1).padStart(2,'0')}`;
-    let ivaD, ivaC, ivaBlanqueo;
+    let ivaD=0, ivaC=0, ivaBl=0;
     if (REAL_M.includes(m)) {
       const ingR = Object.values(erD[m]?.['INGRESOS']||{}).reduce((s,v)=>s+(v._total||0),0);
       const cvR  = Math.abs(Object.values(erD[m]?.['COSTOS VARIABLES POR SEDE']||{}).reduce((s,v)=>s+(v._total||0),0));
@@ -2090,146 +2090,137 @@ function renderCFProy() {
       ivaC = (cvR+cmR)*(p.pct_iva_eg/100)*IVA;
       const vfT = erD[m]?.['IVA']?.['VENTAS FINANCIERAS']?.['_total']||0;
       const ptT = Math.abs(erD[m]?.['IVA']?.['PAGOS A TERCEROS']?.['_total']||0);
-      ivaBlanqueo = vfT - ptT;
+      ivaBl = vfT - ptT;
     } else {
       const ingB = budSum(m,'INGRESOS');
       const cvB  = Math.abs(budSum(m,'COSTOS VARIABLES POR SEDE'));
       const cmB  = Math.abs(budSum(m,'COSTOS DE LA MARCA'));
       ivaD = ingB*(p.pct_iva_ing/100)*IVA;
       ivaC = (cvB+cmB)*(p.pct_iva_eg/100)*IVA;
-      ivaBlanqueo = p.vf_mes*(p.iva_neto_pct/100);
+      ivaBl = p.vf_mes*(p.iva_neto_pct/100);
     }
-    ivaAfip[payM] = (ivaAfip[payM]||0) + (ivaD - ivaC) + ivaBlanqueo;
+    ivaAfip[payM] = (ivaAfip[payM]||0) + (ivaD - ivaC) + ivaBl;
   });
 
   // ── Construir filas ──
   const rows = [];
-  let rezago_pendiente = 0; // % del mes anterior sin cobrar
+  let rezago_next = 0; // rezago calculado del mes actual que pasa al siguiente
 
   ALL_M.forEach((m,idx) => {
     const st = getState(m);
-    const prevM = idx > 0 ? ALL_M[idx-1] : null;
+    const rezago_in = rezago_next; // rezago que entra ESTE mes (del mes anterior)
 
-    // ══ INGRESOS ══
-    let cobIng, cobIVA, vfCaja, rezago;
-
-    if (st === 'real') {
-      // Datos reales de cobranzas
-      cobIng  = cobSub(m,'INGRESOS');
-      cobIVA  = cobSub(m,'IVA');
-      vfCaja  = erD[m]?.['IVA']?.['VENTAS FINANCIERAS']?.['_total'] || 0;
-      rezago  = 0; // ya está incluido en cobIng (cobranzas reales incluyen rezago)
-
-    } else if (st === 'curso') {
-      // Mes en curso: real hasta hoy + objetivo del resto del mes
-      cobIng  = cobSub(m,'INGRESOS'); // real hasta hoy (puede ser 0)
-      cobIVA  = cobSub(m,'IVA');
-      vfCaja  = (erD[m]?.['IVA']?.['VENTAS FINANCIERAS']?.['_total'] || 0) || p.vf_mes;
-      // Complementar con el objetivo completo del mes (así no distorsiona)
-      const budIng = budSum(m,'INGRESOS');
-      cobIng  = cobIng || budIng * (p.tasa_mes/100); // si no hay real, usar objetivo
-      cobIVA  = cobIVA || budIng*(p.pct_iva_ing/100)*IVA*(p.tasa_mes/100);
-      rezago  = rezago_pendiente; // rezago del mes anterior
-
-    } else {
-      // Proyectado puro
-      const budIng = budSum(m,'INGRESOS');
-      cobIng  = budIng * (p.tasa_mes/100);
-      cobIVA  = budIng * (p.pct_iva_ing/100) * IVA * (p.tasa_mes/100);
-      vfCaja  = p.vf_mes;
-      rezago  = rezago_pendiente; // rezago del mes anterior
-    }
-
-    // Calcular rezago que va al mes siguiente
-    if (st === 'real') {
-      // Rezago real = lo que NO se cobró del mes (facturas emitidas menos cobranzas del propio mes)
-      // Aproximado: usamos el historico 13% del ingreso presupuestado del mes
-      rezago_pendiente = budSum(m,'INGRESOS') * (p.tasa_rez/100);
-    } else {
-      rezago_pendiente = budSum(m,'INGRESOS') * (p.tasa_rez/100);
-    }
-
-    // ══ EGRESOS ══
-    let pagCV, pagCM, pagFin, pagIVA, pagIng, pagImp, ivaEgCredito;
+    let cobIng=0, cobIVA=0, vfCaja=0;
+    let pagCV=0, pagCM=0, pagFin=0, pagIVA=0, pagIng=0, pagImp=0, ivaEgCred=0;
 
     if (st === 'real') {
+      // ── REAL: todo de cobranzas/pagos reales ──
+      cobIng = cobSub(m,'INGRESOS');
+      cobIVA = cobSub(m,'IVA');
+      vfCaja = erD[m]?.['IVA']?.['VENTAS FINANCIERAS']?.['_total'] || 0;
+
       pagCV  = -pagSub(m,'COSTOS VARIABLES POR SEDE');
       pagCM  = -pagSub(m,'COSTOS DE LA MARCA');
       pagFin = -pagSub(m,'FINANCIEROS');
       pagIVA = -pagSub(m,'IVA');
-      pagIng = -pagSub(m,'INGRESOS'); // pagos a terceros (blanqueo)
+      pagIng = -pagSub(m,'INGRESOS'); // pagos a terceros blanqueo
       pagImp = -impMes(m);
-      ivaEgCredito = 0; // ya está dentro de pagIVA real
+      ivaEgCred = 0; // ya está en pagIVA real
+
+      // Calcular rezago que va al mes siguiente (13% del presupuesto del mes)
+      rezago_next = budSum(m,'INGRESOS') * (p.tasa_rez/100);
 
     } else if (st === 'curso') {
-      // Real lo que hay, objetivo si no hay
-      pagCV  = -(pagSub(m,'COSTOS VARIABLES POR SEDE') || Math.abs(budSum(m,'COSTOS VARIABLES POR SEDE')));
-      pagCM  = -(pagSub(m,'COSTOS DE LA MARCA')        || Math.abs(budSum(m,'COSTOS DE LA MARCA')));
-      pagFin = -(pagSub(m,'FINANCIEROS')               || Math.abs(budSum(m,'FINANCIEROS')));
+      // ── EN CURSO: real si hay, objetivo completo del mes si no ──
+      const ci = cobSub(m,'INGRESOS');
+      const cv = cobSub(m,'IVA');
+      const budIng = budSum(m,'INGRESOS');
+
+      // Si ya hay cobros reales este mes, usar esos + proyectar el resto
+      // Si no hay aún, usar objetivo completo
+      cobIng = ci > 0 ? ci : budIng * (p.tasa_mes/100);
+      cobIVA = cv > 0 ? cv : budIng * (p.pct_iva_ing/100) * IVA * (p.tasa_mes/100);
+      vfCaja = (erD[m]?.['IVA']?.['VENTAS FINANCIERAS']?.['_total'] || 0) || p.vf_mes;
+
+      const pi = pagSub(m,'COSTOS VARIABLES POR SEDE');
+      pagCV  = -(pi > 0 ? pi : Math.abs(budSum(m,'COSTOS VARIABLES POR SEDE')));
+      const pm = pagSub(m,'COSTOS DE LA MARCA');
+      pagCM  = -(pm > 0 ? pm : Math.abs(budSum(m,'COSTOS DE LA MARCA')));
+      const pf = pagSub(m,'FINANCIEROS');
+      pagFin = -(pf > 0 ? pf : Math.abs(budSum(m,'FINANCIEROS')));
       pagIVA = -pagSub(m,'IVA');
-      pagIng = -(pagSub(m,'INGRESOS') || p.vf_mes);
-      pagImp = -(impMes(m) || Math.abs(budSum(m,'IMPUESTOS')));
-      ivaEgCredito = pagIVA === 0 ? -(Math.abs(budSum(m,'COSTOS VARIABLES POR SEDE')+budSum(m,'COSTOS DE LA MARCA'))*(p.pct_iva_eg/100)*IVA) : 0;
+      const ping = pagSub(m,'INGRESOS');
+      pagIng = -(ping > 0 ? ping : p.vf_mes);
+      const pimp = impMes(m);
+      pagImp = -(pimp > 0 ? pimp : Math.abs(budSum(m,'IMPUESTOS')));
+      ivaEgCred = pagIVA === 0
+        ? -(Math.abs(budSum(m,'COSTOS VARIABLES POR SEDE')+budSum(m,'COSTOS DE LA MARCA'))*(p.pct_iva_eg/100)*IVA)
+        : 0;
+
+      rezago_next = budIng * (p.tasa_rez/100);
 
     } else {
-      // Proyectado puro - budget
+      // ── PROYECTADO: 100% presupuesto ──
+      const budIng = budSum(m,'INGRESOS');
+      cobIng = budIng * (p.tasa_mes/100);
+      cobIVA = budIng * (p.pct_iva_ing/100) * IVA * (p.tasa_mes/100);
+      vfCaja = p.vf_mes;
+
       pagCV  = budSum(m,'COSTOS VARIABLES POR SEDE');  // ya negativo
       pagCM  = budSum(m,'COSTOS DE LA MARCA');
       pagFin = budSum(m,'FINANCIEROS');
       pagIng = -p.vf_mes;
       pagImp = budSum(m,'IMPUESTOS');
-      ivaEgCredito = -(Math.abs(pagCV+pagCM)*(p.pct_iva_eg/100)*IVA);
-      pagIVA = 0; // está dentro de ivaEgCredito
+      ivaEgCred = -(Math.abs(pagCV+pagCM)*(p.pct_iva_eg/100)*IVA);
+      pagIVA = 0;
+
+      rezago_next = budIng * (p.tasa_rez/100);
     }
 
     const ivaAFIP = -(ivaAfip[m]||0);
+    const totalIng = cobIng + cobIVA + rezago_in + vfCaja;
+    const totalEg  = pagCV + pagCM + pagFin + pagIVA + pagIng + pagImp + ivaEgCred + ivaAFIP;
+    const saldo = totalIng + totalEg;
 
-    const totalIng = cobIng + cobIVA + rezago + vfCaja;
-    const totalEg  = pagCV + pagCM + pagFin + pagIVA + pagIng + pagImp + ivaEgCredito + ivaAFIP;
-    const saldo    = totalIng + totalEg;
-
-    rows.push({m, st, cobIng, cobIVA, rezago, vfCaja,
-      pagCV, pagCM, pagFin, pagIVA, pagIng, pagImp, ivaEgCredito, ivaAFIP,
+    rows.push({m, st,
+      cobIng, cobIVA, rezago:rezago_in, vfCaja,
+      pagCV, pagCM, pagFin, pagIVA, pagIng, pagImp, ivaEgCred, ivaAFIP,
       totalIng, totalEg, saldo});
   });
 
   let acum = 0;
   rows.forEach(r => { acum += r.saldo; r.acum = acum; });
 
-  // ── UI: controles ──
+  // ── Colores por estado ──
   const stColor = st => st==='real'?'var(--g)':st==='curso'?'#f59e0b':'var(--text3)';
   const stLabel = st => st==='real'?'real':st==='curso'?'curso':'proy';
 
+  // ── Controles ──
   let h = `<div style="margin-bottom:16px">
   <div style="font-size:15px;font-weight:600;margin-bottom:14px">Cashflow Proyectado 2026</div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding:13px 15px;background:var(--gray);border-radius:10px;font-size:12px">
-
     <div style="display:flex;align-items:center;gap:6px">
       <span style="color:var(--text3)">Cobro mismo mes</span>
       <input type="range" min="60" max="100" value="${p.tasa_mes}" style="width:75px"
-        oninput="const el=document.getElementById('cf-proy-content');el._cf.tasa_mes=+this.value;el._cf.tasa_rez=100-+this.value;document.getElementById('lbl-tasa-m').textContent=this.value+'%';document.getElementById('lbl-tasa-r').textContent=(100-+this.value)+'%';renderCFProy()">
-      <span id="lbl-tasa-m" style="font-weight:600;min-width:30px">${p.tasa_mes}%</span>
+        oninput="const el=document.getElementById('cf-proy-content');el._cf.tasa_mes=+this.value;el._cf.tasa_rez=100-+this.value;document.getElementById('lbl-tm').textContent=this.value+'%';document.getElementById('lbl-tr').textContent=(100-+this.value)+'%';renderCFProy()">
+      <span id="lbl-tm" style="font-weight:600;min-width:30px">${p.tasa_mes}%</span>
     </div>
-
     <div style="display:flex;align-items:center;gap:6px">
       <span style="color:var(--text3)">Rezago</span>
-      <span id="lbl-tasa-r" style="font-weight:600;color:#f59e0b">${p.tasa_rez}%</span>
+      <span id="lbl-tr" style="font-weight:600;color:#f59e0b">${p.tasa_rez}%</span>
     </div>
-
     <div style="display:flex;align-items:center;gap:6px">
       <span style="color:var(--text3)">IVA ing</span>
       <input type="range" min="30" max="90" value="${p.pct_iva_ing}" style="width:70px"
-        oninput="document.getElementById('cf-proy-content')._cf.pct_iva_ing=+this.value;document.getElementById('lbl-piva-i').textContent=this.value+'%';renderCFProy()">
-      <span id="lbl-piva-i" style="font-weight:600;min-width:28px">${p.pct_iva_ing}%</span>
+        oninput="document.getElementById('cf-proy-content')._cf.pct_iva_ing=+this.value;document.getElementById('lbl-ii').textContent=this.value+'%';renderCFProy()">
+      <span id="lbl-ii" style="font-weight:600;min-width:28px">${p.pct_iva_ing}%</span>
     </div>
-
     <div style="display:flex;align-items:center;gap:6px">
       <span style="color:var(--text3)">IVA egr</span>
       <input type="range" min="30" max="90" value="${p.pct_iva_eg}" style="width:70px"
-        oninput="document.getElementById('cf-proy-content')._cf.pct_iva_eg=+this.value;document.getElementById('lbl-piva-e').textContent=this.value+'%';renderCFProy()">
-      <span id="lbl-piva-e" style="font-weight:600;min-width:28px">${p.pct_iva_eg}%</span>
+        oninput="document.getElementById('cf-proy-content')._cf.pct_iva_eg=+this.value;document.getElementById('lbl-ie').textContent=this.value+'%';renderCFProy()">
+      <span id="lbl-ie" style="font-weight:600;min-width:28px">${p.pct_iva_eg}%</span>
     </div>
-
     <div style="display:flex;align-items:center;gap:6px">
       <span style="color:var(--text3)">Blanqueo</span>
       <input type="number" value="${p.vf_mes/1e6}" min="0" max="200" step="5"
@@ -2237,7 +2228,6 @@ function renderCFProy() {
         oninput="document.getElementById('cf-proy-content')._cf.vf_mes=+this.value*1e6;renderCFProy()">
       <span style="color:var(--text3)">M</span>
     </div>
-
     <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
       <button style="padding:3px 10px;border-radius:20px;font-size:11px;border:.5px solid var(--border);cursor:pointer;font-family:var(--fn);background:${p.moneda==='ARS'?'var(--text)':'var(--card)'};color:${p.moneda==='ARS'?'var(--card)':'var(--text2)'}"
         onclick="document.getElementById('cf-proy-content')._cf.moneda='ARS';renderCFProy()">ARS</button>
@@ -2247,48 +2237,46 @@ function renderCFProy() {
   </div>`;
 
   // ── Tabla ──
-  const ROW_DEFS = [
-    {label:'Cobranza INGRESOS',      key:'cobIng',  color:'var(--g)',     bold:false, indent:1},
-    {label:'Cobranza IVA cobrado',   key:'cobIVA',  color:'var(--g)',     bold:false, indent:1},
-    {label:'Rezago mes anterior',    key:'rezago',  color:'var(--g)',     bold:false, indent:1},
-    {label:'Ventas financieras',     key:'vfCaja',  color:'var(--text3)', bold:false, indent:1},
-    {label:'TOTAL INGRESOS CAJA',    key:'totalIng',color:'var(--g)',     bold:true,  sep:true},
-    {label:'CV por sede',            key:'pagCV',   color:'var(--r)',     bold:false, indent:1},
-    {label:'Costos de marca',        key:'pagCM',   color:'var(--r)',     bold:false, indent:1},
-    {label:'Financieros',            key:'pagFin',  color:'var(--r)',     bold:false, indent:1},
-    {label:'Impuestos (IIBB etc.)',  key:'pagImp',  color:'var(--r)',     bold:false, indent:1},
-    {label:'IVA pagado proveed.',    key:'pagIVA',  color:'var(--r)',     bold:false, indent:1},
-    {label:'Pagos a terceros',       key:'pagIng',  color:'var(--text3)', bold:false, indent:1},
-    {label:'IVA crédito (proy)',     key:'ivaEgCredito',color:'var(--r)',bold:false, indent:2},
-    {label:'⚠ IVA neto AFIP (−3m)', key:'ivaAFIP', color:'#d97706',      bold:true,  indent:1},
-    {label:'TOTAL EGRESOS',         key:'totalEg', color:'var(--r)',     bold:true,  sep:true},
-    {label:'SALDO NETO',            key:'saldo',   color:'dyn',          bold:true,  sep:true, big:true},
-    {label:'SALDO ACUMULADO',       key:'acum',    color:'dyn',          bold:true,  sep:true, big:true},
+  const DEFS = [
+    {label:'Cobranza INGRESOS',       key:'cobIng',    color:'var(--g)',     bold:false, indent:1},
+    {label:'Cobranza IVA cobrado',    key:'cobIVA',    color:'var(--g)',     bold:false, indent:1},
+    {label:'Rezago mes anterior',     key:'rezago',    color:'var(--g)',     bold:false, indent:1},
+    {label:'Ventas financieras',      key:'vfCaja',    color:'var(--text3)', bold:false, indent:1},
+    {label:'TOTAL INGRESOS CAJA',    key:'totalIng',  color:'var(--g)',     bold:true,  sep:true},
+    {label:'CV por sede',             key:'pagCV',     color:'var(--r)',     bold:false, indent:1},
+    {label:'Costos de marca',         key:'pagCM',     color:'var(--r)',     bold:false, indent:1},
+    {label:'Financieros',             key:'pagFin',    color:'var(--r)',     bold:false, indent:1},
+    {label:'Impuestos (IIBB etc.)',   key:'pagImp',    color:'var(--r)',     bold:false, indent:1},
+    {label:'IVA pagado proveed.',     key:'pagIVA',    color:'var(--r)',     bold:false, indent:1},
+    {label:'Pagos a terceros',        key:'pagIng',    color:'var(--text3)', bold:false, indent:1},
+    {label:'IVA crédito prov. (proy)',key:'ivaEgCred', color:'var(--r)',     bold:false, indent:2},
+    {label:'⚠ IVA neto AFIP (−3m)',  key:'ivaAFIP',   color:'#d97706',      bold:true,  indent:1},
+    {label:'TOTAL EGRESOS',          key:'totalEg',   color:'var(--r)',     bold:true,  sep:true},
+    {label:'SALDO NETO',             key:'saldo',     color:'dyn',          bold:true,  sep:true, big:true},
+    {label:'SALDO ACUMULADO',        key:'acum',      color:'dyn',          bold:true,  sep:true, big:true},
   ];
 
   h += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
   <thead><tr style="background:var(--gray)">
     <th style="text-align:left;padding:6px 10px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1.5px solid var(--border);white-space:nowrap">Concepto</th>
     ${rows.map(r=>`<th style="text-align:right;padding:6px 7px;font-size:10px;color:${stColor(r.st)};text-transform:uppercase;border-bottom:1.5px solid var(--border);white-space:nowrap">
-      ${MN[r.m]||r.m}<br><span style="font-size:8px;font-weight:400;opacity:.8">${stLabel(r.st)}</span>
-    </th>`).join('')}
+      ${MN[r.m]||r.m}<br><span style="font-size:8px;font-weight:400;opacity:.8">${stLabel(r.st)}</span></th>`).join('')}
   </tr></thead><tbody>`;
 
-  ROW_DEFS.forEach(rd => {
+  DEFS.forEach(rd => {
     const bg = rd.sep ? 'background:var(--gray);border-top:2px solid var(--border);' : '';
     const fs = rd.big ? 'font-size:13px;' : '';
     const pl = rd.indent===2?'padding-left:22px':rd.indent===1?'padding-left:12px':'';
     h += `<tr style="${bg}">
       <td style="padding:5px 10px;${pl};${fs}font-weight:${rd.bold?600:400};color:var(--text);white-space:nowrap;border-bottom:.5px solid var(--border)">${rd.label}</td>`;
     rows.forEach(r => {
-      const v   = r[rd.key];
-      const col = rd.color==='dyn'?(v>=0?'var(--g)':'var(--r)'):rd.color;
-      // Show — for zero non-significant rows in real months
-      const display = (v===0 && rd.key==='rezago' && r.st==='real') ? '—'
-                    : (v===0 && rd.key==='ivaEgCredito' && r.st==='real') ? '—'
-                    : (v===0 && rd.key==='pagIVA' && r.st!=='real') ? '—'
-                    : fmtV(v,r.m);
-      h += `<td style="text-align:right;padding:5px 7px;${fs}font-weight:${rd.bold?600:400};color:${col};font-variant-numeric:tabular-nums;white-space:nowrap;border-bottom:.5px solid var(--border)">${display}</td>`;
+      const v = r[rd.key];
+      const col = rd.color==='dyn' ? (v>=0?'var(--g)':'var(--r)') : rd.color;
+      // Mostrar — para ceros en filas no aplican al estado del mes
+      const skip = (rd.key==='rezago'      && r.st==='real'  && v===0)
+                || (rd.key==='ivaEgCred'   && r.st==='real'  && v===0)
+                || (rd.key==='pagIVA'      && r.st!=='real'  && v===0);
+      h += `<td style="text-align:right;padding:5px 7px;${fs}font-weight:${rd.bold?600:400};color:${col};font-variant-numeric:tabular-nums;white-space:nowrap;border-bottom:.5px solid var(--border)">${skip?'—':fmtV(v,r.m)}</td>`;
     });
     h += '</tr>';
   });
@@ -2296,13 +2284,11 @@ function renderCFProy() {
   h += `</tbody></table></div>
   <div style="margin-top:12px;padding:11px 14px;background:var(--gray);border-radius:8px;font-size:11px;color:var(--text3);line-height:1.9">
     <strong style="color:var(--text)">Metodología:</strong><br>
-    • <span style="color:var(--g)">Verde</span> = mes cerrado con datos reales de cobranzas y pagos.<br>
-    • <span style="color:#f59e0b">Amarillo</span> = mes en curso: datos reales disponibles + objetivo del mes completo.<br>
-    • <span style="color:var(--text3)">Gris</span> = proyectado con presupuesto.<br>
-    • <strong>Rezago</strong>: ${p.tasa_rez}% del mes anterior que se cobra en el mes siguiente (histórico: 13%).<br>
-    • <strong>Cobro mismo mes</strong>: ${p.tasa_mes}% del presupuesto (histórico: 87%).<br>
-    • <strong>⚠ IVA AFIP</strong>: IVA neto pagado 90 días después. Incluye blanqueo al ${p.iva_neto_pct}%.<br>
-    • Meses reales: CV/CM/Fin/IVA tomados de pagos reales por subcategoría.
+    • <span style="color:var(--g)">Verde</span> = mes cerrado: datos reales de cobranzas y pagos por subcategoría.<br>
+    • <span style="color:#f59e0b">Amarillo</span> = mes en curso: real si hay, objetivo del mes completo si no.<br>
+    • Gris = proyectado con presupuesto.<br>
+    • <strong>Rezago ${p.tasa_rez}%</strong>: del mes anterior se cobra en el mes siguiente. Histórico real: 13%.<br>
+    • <strong>⚠ IVA AFIP</strong>: IVA neto pagado 90 días después.
   </div></div>`;
 
   el.innerHTML = h;
