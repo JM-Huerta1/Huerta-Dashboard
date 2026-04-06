@@ -2095,8 +2095,11 @@ function renderCFProy() {
     const ivaIngCobrado = ingBase * (p.pct_iva_ing / 100) * IVA;
     const ingCobrable   = ingBase + ivaIngCobrado;
     const ingCaja       = ingCobrable * (p.tasa / 100);
-    const vfCaja        = p.vf_mes;
-    const ptCaja        = -p.pt_mes;
+    // Blanqueo: real para meses con datos, estimado para proyectados
+    const vfReal = erD[m]?.['IVA']?.['VENTAS FINANCIERAS']?.['_total'] || 0;
+    const ptReal = Math.abs(erD[m]?.['IVA']?.['PAGOS A TERCEROS']?.['_total'] || 0);
+    const vfCaja = isReal ? vfReal : p.vf_mes;
+    const ptCaja = isReal ? -ptReal : -p.pt_mes;
     const cvTotal  = budSum(m, 'COSTOS VARIABLES POR SEDE');
     const cmTotal  = budSum(m, 'COSTOS DE LA MARCA');
     const finTotal = budSum(m, 'FINANCIEROS');
