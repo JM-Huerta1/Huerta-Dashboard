@@ -2103,14 +2103,18 @@ function renderCFProy() {
     const cvTotal  = budSum(m, 'COSTOS VARIABLES POR SEDE');
     const cmTotal  = budSum(m, 'COSTOS DE LA MARCA');
     const finTotal = budSum(m, 'FINANCIEROS');
-    const egresosOp = cvTotal + cmTotal + finTotal;
+    // Impuestos: real para meses con datos, budget para proyectados
+    const impTotal = isReal
+      ? Object.values(erD[m]?.['IMPUESTOS'] || {}).reduce((s,v) => s + (v._total||0), 0)
+      : budSum(m, 'IMPUESTOS');
+    const egresosOp = cvTotal + cmTotal + finTotal + impTotal;
     const ivaEgCredito = Math.abs(cvTotal + cmTotal) * (p.pct_iva_eg / 100) * IVA;
     const ivaAFIP  = -(ivaAfip[m] || 0);
     const totalIngresos = ingCaja + vfCaja;
     const totalEgresos  = egresosOp + ptCaja + ivaAFIP - ivaEgCredito;
     const saldo = totalIngresos + totalEgresos;
     rows.push({ m, isReal, ingBase, ivaIngCobrado, ingCobrable, ingCaja,
-      vfCaja, ptCaja, cvTotal, cmTotal, finTotal, egresosOp,
+      vfCaja, ptCaja, cvTotal, cmTotal, finTotal, impTotal, egresosOp,
       ivaEgCredito, ivaAFIP, totalIngresos, totalEgresos, saldo });
   });
   let acum = 0;
@@ -2176,6 +2180,7 @@ function renderCFProy() {
     { label:'CV por sede',                       key:'cvTotal',       color:'var(--r)',     bold:false, indent:1 },
     { label:'Costos de marca',                   key:'cmTotal',       color:'var(--r)',     bold:false, indent:1 },
     { label:'Financieros',                       key:'finTotal',      color:'var(--r)',     bold:false, indent:1 },
+    { label:'Impuestos (IIBB, ley 25413, AFIP)',  key:'impTotal',      color:'var(--r)',     bold:false, indent:1 },
     { label:`− IVA crédito proveedores (~${p.pct_iva_eg}%)`, key:'ivaEgCredito', neg:true, color:'var(--r)', bold:false, indent:1 },
     { label:'Pagos a terceros (blanqueo)',        key:'ptCaja',        color:'var(--text3)', bold:false, indent:1 },
     { label:'⚠ IVA neto AFIP (mes −3)',          key:'ivaAFIP',       color:'#d97706',      bold:true,  indent:1 },
@@ -2211,6 +2216,7 @@ function renderCFProy() {
     <strong style="color:var(--text)">Metodología:</strong><br>
     • <strong>Ingresos base</strong>: presupuesto sin IVA (reales ene-mar del ER).<br>
     • <strong>IVA ingresos</strong>: ${p.pct_iva_ing}% de ingresos lleva IVA 21% → histórico real ~68%. Ajustable.<br>
+    • <strong>Impuestos</strong>: IIBB + Ley 25413 + intereses AFIP (reales ene-mar, presupuesto abr-dic).<br>
     • <strong>CV/CM</strong>: ya incluyen IVA en los proveedores con FAC-A/B. ${p.pct_iva_eg}% con IVA → histórico real ~66%. Ajustable.<br>
     • <strong>IVA crédito proveedores</strong>: IVA pagado a proveedores con FAC-A/B (~${p.pct_iva_eg}% del total). Es egreso real de caja.<br>
     • <strong>⚠ IVA AFIP</strong>: (Débito − Crédito + ${p.iva_neto_pct}% blanqueo) del mes −3. Se paga 90 días después.<br>
