@@ -462,6 +462,9 @@ function finishSheetsLoad(data, clientName, savedId) {
     if(!data.er_detail) data.er_detail = {};
     Object.keys(preData.er_detail).forEach(m => { if(!data.er_detail[m]) data.er_detail[m] = preData.er_detail[m]; });
   }
+  // Ensure meses includes all months present in er_detail/cashflow (ER may have months cobranzas doesn't yet)
+  const _allM = new Set([...(data.meses||[]),...Object.keys(data.er_detail||{}),...Object.keys(data.cashflow||{})]);
+  data.meses = [..._allM].filter(m => m && m.startsWith('2026')).sort();
   clients[clientName]=data;
   try{localStorage.setItem('huerta_sheet_id',savedId);}catch(e){}
   document.getElementById('upload-screen').style.display='none';
