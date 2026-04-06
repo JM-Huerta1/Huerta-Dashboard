@@ -2054,7 +2054,11 @@ function renderCFProy() {
       .reduce((s, v) => s + Object.values(v).reduce((a, b) => a + b, 0), 0);
 
   // ── Build IVA AFIP per payment month (3 months later) ──
-  const ivaAfip = {};
+  // IVA histórico: pagos de períodos anteriores a 2026 (nov/dic 2025)
+  // Estos son fijos y no se calculan del er_detail
+  const ivaAfip = {
+    '2026-02': 4032000,   // IVA de noviembre 2025 pagado en febrero 2026
+  };
   ALL_M.forEach(m => {
     const [y, mo] = m.split('-').map(Number);
     const nm = mo + 3;
