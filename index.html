@@ -447,34 +447,20 @@ const PRELOADED = {"Huerta Coworking":{"meses":["2026-01","2026-02","2026-03"],"
 let SHEET_ID = '';
 let APPS_SCRIPT_URL = ''; // Web App URL from Apps Script deployment
 
-// JSONP loader para evitar CORS con Google Apps Script
-function fetchJSONP(url) {
-  return new Promise((resolve, reject) => {
-    const cbName = '_jsonp_cb_' + Date.now();
-    const timeout = setTimeout(() => {
-      delete window[cbName];
-      script.remove();
-      reject(new Error('Timeout esperando respuesta del Apps Script (30s). Verificá que esté deployado como Web App con acceso "Cualquier persona".'));
-    }, 30000);
-
-    window[cbName] = function(data) {
-      clearTimeout(timeout);
-      delete window[cbName];
-      script.remove();
-      resolve(data);
-    };
-
-    const script = document.createElement('script');
-    const separator = url.includes('?') ? '&' : '?';
-    script.src = url + separator + 'callback=' + cbName;
-    script.onerror = () => {
-      clearTimeout(timeout);
-      delete window[cbName];
-      script.remove();
-      reject(new Error('No se pudo cargar el Apps Script. Verificá: 1) URL termina en /exec  2) Deployado como Aplicación web  3) Acceso: Cualquier persona'));
-    };
-    document.head.appendChild(script);
-  });
+// Fetch Apps Script con fallback a proxy CORS (allorigins.win)
+function fetchAppsScript(url) {
+  const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
+  return fetch(url)
+    .then(function(r) {
+      if (!r.ok) throw new Error('status ' + r.status);
+      return r.json();
+    })
+    .catch(function(err) {
+      console.log('Fetch directo falló (' + err.message + '), usando proxy CORS...');
+      return fetch(proxyUrl)
+        .then(function(r) { return r.json(); })
+        .then(function(data) { return JSON.parse(data.contents); });
+    });
 }
 
 async function loadFromSheets(sheetId, clientName) {
@@ -506,7 +492,7 @@ async function loadFromSheets(sheetId, clientName) {
       statusEl.textContent = 'Cargando datos desde Google Sheets...';
       // JSONP: carga via <script>
 // v20260407171901 tag para evitar CORS
-      fetchJSONP(sheetId).then(function(json) {
+      fetchAppsScript(sheetId).then(function(json) {
         if(json.error) { statusEl.textContent = '✗ Apps Script error: ' + json.error; if(btn) btn.disabled=false; return; }
         finishSheetsLoad(json, clientName, sheetId);
       }).catch(function(err) {
