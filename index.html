@@ -447,6 +447,36 @@ const PRELOADED = {"Huerta Coworking":{"meses":["2026-01","2026-02","2026-03"],"
 let SHEET_ID = '';
 let APPS_SCRIPT_URL = ''; // Web App URL from Apps Script deployment
 
+// JSONP loader para evitar CORS con Google Apps Script
+function fetchJSONP(url) {
+  return new Promise((resolve, reject) => {
+    const cbName = '_jsonp_cb_' + Date.now();
+    const timeout = setTimeout(() => {
+      delete window[cbName];
+      script.remove();
+      reject(new Error('Timeout esperando respuesta del Apps Script (30s). Verificá que esté deployado como Web App con acceso "Cualquier persona".'));
+    }, 30000);
+
+    window[cbName] = function(data) {
+      clearTimeout(timeout);
+      delete window[cbName];
+      script.remove();
+      resolve(data);
+    };
+
+    const script = document.createElement('script');
+    const separator = url.includes('?') ? '&' : '?';
+    script.src = url + separator + 'callback=' + cbName;
+    script.onerror = () => {
+      clearTimeout(timeout);
+      delete window[cbName];
+      script.remove();
+      reject(new Error('No se pudo cargar el Apps Script. Verificá: 1) URL termina en /exec  2) Deployado como Aplicación web  3) Acceso: Cualquier persona'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
 async function loadFromSheets(sheetId, clientName) {
   // sheetId can be a full URL or just the ID or an Apps Script URL
   const statusEl = document.getElementById('sheets-status');
@@ -474,12 +504,14 @@ async function loadFromSheets(sheetId, clientName) {
     if(isAppsScript) {
       APPS_SCRIPT_URL = sheetId;
       statusEl.textContent = 'Cargando datos desde Google Sheets...';
-      // Fetch directo al Apps Script (requiere que el Apps Script esté publicado como "Cualquier persona")
-      const r = await fetch(sheetId);
-      if(!r.ok) throw new Error('Error al conectar: ' + r.status + '. Verificá que el Apps Script esté deployado correctamente y el link sea correcto.');
-      const json = await r.json();
-      if(json.error) throw new Error('Apps Script error: ' + json.error);
-      finishSheetsLoad(json, clientName, sheetId);
+      // JSONP: carga via <script>
+// v20260407171901 tag para evitar CORS
+      fetchJSONP(sheetId).then(function(json) {
+        if(json.error) { statusEl.textContent = '✗ Apps Script error: ' + json.error; if(btn) btn.disabled=false; return; }
+        finishSheetsLoad(json, clientName, sheetId);
+      }).catch(function(err) {
+        statusEl.textContent = '✗ ' + err.message; if(btn) btn.disabled=false;
+      });
       return;
     } else {
       // Legacy CSV mode
