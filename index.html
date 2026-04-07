@@ -2196,9 +2196,9 @@ function renderCFProy() {
     if (st==='real') {
       // ── REAL: datos directos de cobranzas y pagos ──
       // cobIng ya incluye: corriente + rezago entrante + adelantos
-      // Si hay subcategoria usarla; si no (datos viejos sin subcategoria), tomar todo como INGRESOS
-      cobIng = cobSub(m,'INGRESOS') || (cobSub(m,'IVA')===0 ? cobAll(m) : cobSub(m,'INGRESOS'));
-      cobIVA = cobSub(m,'IVA');
+      const _hasSub = cob_r.some(r=>r.mes===m&&r.subcategoria&&r.subcategoria!=='');
+      cobIng = _hasSub ? cobSub(m,'INGRESOS') : cobAll(m);
+      cobIVA = _hasSub ? cobSub(m,'IVA') : 0;
       rezago_in = 0; // ya está dentro de cobIng, no se suma aparte
 
       // Informativo: rezago real de qué mes vino (del mes anterior)
@@ -2206,10 +2206,15 @@ function renderCFProy() {
       // Usamos rez_r[pm] = lo que salió del mes anterior hacia m
       vfInfo = (erD[m]?.['IVA']?.['VENTAS FINANCIERAS']?.['_total']||0)*121/100;
 
+      const _hasSubPag = pag_r.some(r=>r.mes===m&&r.subcategoria&&r.subcategoria!=='');
       pagCV  = -pagSub(m,'COSTOS VARIABLES POR SEDE');
       pagCM  = -pagSub(m,'COSTOS DE LA MARCA');
       pagFin = -pagSub(m,'FINANCIEROS');
       pagIVA = -pagSub(m,'IVA');
+      if (!_hasSubPag) {
+        // Sin subcategoria: mostrar total de pagos como CV
+        pagCV = -(pag_r.filter(r=>r.mes===m).reduce((s,r)=>s+r.importe,0));
+      }
       pagImp = -impMes(m);
       ptInfo  = Math.abs(erD[m]?.['IVA']?.['PAGOS A TERCEROS']?.['_total']||0)*121/100;
       ivaEgCred = 0;
