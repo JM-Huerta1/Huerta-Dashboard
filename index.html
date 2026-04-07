@@ -652,8 +652,8 @@ function extractDataFromRows(cobRows, pagRows, erRows, impRows, objRows, fcRows,
   });
 
   // Raw data
-  cobRows.forEach(r=>{const d=parseDate(r['Fecha']||r['fecha']);const imp=cobImp(r);if(imp<=0)return;out.cobranzas_raw.push({fecha:d?d.toISOString().slice(0,10):null,mes:mKey(d)||'',nombre:String(r['Razón Social']||r['Razon Social']||''),medio:String(r['Medio de Cobro']||r['Medio de cobro']||''),banco:String(r['BANCO']||r['Banco']||''),importe:imp});});
-  pagRows.forEach(r=>{const d=parseDate(r['Fecha']||r['fecha']);const imp=pagImp(r);if(imp<=0)return;out.pagos_raw.push({fecha:d?d.toISOString().slice(0,10):null,mes:mKey(d)||'',nombre:String(r['Razón Social']||r['Razon Social']||''),medio:String(r['Medio de Pago']||r['Medio de pago']||''),banco:String(r['BANCO']||r['Banco']||''),importe:imp});});
+  cobRows.forEach(r=>{const d=parseDate(r['Fecha']||r['fecha']);const imp=cobImp(r);if(imp<=0)return;out.cobranzas_raw.push({fecha:d?d.toISOString().slice(0,10):null,mes:mKey(d)||'',mes_fac:r['Fecha Factura']?mKey(parseDate(r['Fecha Factura'])):mKey(d)||'',corriente:mKey(d)===mKey(parseDate(r['Fecha Factura']||r['Fecha'])),nombre:String(r['Razón Social']||r['Razon Social']||''),medio:String(r['Medio de Cobro']||r['Medio de cobro']||''),banco:String(r['BANCO']||r['Banco']||''),importe:imp,cuenta:String(r['Cuenta']||r['cuenta']||''),subcategoria:String(r['SUBCATEGORIA']||r['Subcategoria']||'INGRESOS')});});
+  pagRows.forEach(r=>{const d=parseDate(r['Fecha']||r['fecha']);const imp=pagImp(r);if(imp<=0)return;out.pagos_raw.push({fecha:d?d.toISOString().slice(0,10):null,mes:mKey(d)||'',nombre:String(r['Razón Social']||r['Razon Social']||''),medio:String(r['Medio de Pago']||r['Medio de pago']||''),banco:String(r['BANCO']||r['Banco']||''),importe:imp,cuenta:String(r['Cuenta']||r['cuenta']||''),subcategoria:String(r['SUBCATEGORIA']||r['Subcategoria']||'')});});
   if(fcRows.length)fcRows.forEach(r=>{const pend=pN(r['Pendiente']||0);if(pend<=0)return;const v=parseDate(r['Vencimiento']||r['vencimiento']);const d=parseDate(r['Fecha']||r['fecha']);out.deudores.push({nombre:String(r['Razón Social']||r['Razon Social']||r['Cliente']||''),mes:mKey(d)||'',vencimiento:v?v.toISOString().slice(0,10):null,pendiente:pend});});
   if(fpRows.length)fpRows.forEach(r=>{const pend=pN(r['Pendiente']||0);if(pend<=0)return;const v=parseDate(r['Vencimiento']||r['vencimiento']);const d=parseDate(r['Fecha']||r['fecha']);out.proveedores_pend.push({nombre:String(r['Razón Social']||r['Razon Social']||r['Proveedor']||''),mes:mKey(d)||'',vencimiento:v?v.toISOString().slice(0,10):null,pendiente:pend});});
   impRows.forEach(r=>{const imp=pN(r['IMPORTE']||r['Importe']||0);const d=parseDate(r['FECHA DE PAGO']||r['Fecha de pago']||r['Fecha']||'');const mes=mKey(d);if(imp<=0||!mes)return;out.impuestos_raw.push({descripcion:String(r['Descripcion']||r['descripcion']||''),mes,banco:String(r['BANCO']||r['Banco']||'BBVA'),importe:imp});});
@@ -1001,6 +1001,13 @@ function resetApp() {
   document.getElementById('upload-screen').style.display = 'flex';
   document.getElementById('dashboard').style.display = 'none';
   clients = {}; loadedSlots = [false,false];
+  // Limpiar input para que el usuario pueda pegar nueva URL
+  const inp = document.getElementById('sheets-id-input');
+  if(inp) inp.value = '';
+  const badge = document.getElementById('saved-url-badge');
+  if(badge) badge.style.display = 'none';
+  const status = document.getElementById('sheets-status');
+  if(status) status.textContent = '';
   [0,1].forEach(i => {
     const rSlot=document.getElementById('slot-'+i); if(rSlot) rSlot.classList.remove('loaded');
     const rName=document.getElementById('slot-name-'+i); if(rName) rName.textContent = i===0?'Cliente 1':'Cliente 2'+(i===1?' (opcional)':'');
@@ -2148,6 +2155,7 @@ function renderCFProy() {
   const budSum = (m,sec) => Object.values(bud[m]?.[sec]||{})
     .reduce((s,v)=>s+Object.values(v).reduce((a,b)=>a+b,0),0);
   const cobSub = (m,sub) => cob_r.filter(r=>r.mes===m&&r.subcategoria===sub).reduce((s,r)=>s+r.importe,0);
+  const cobAll  = m => cob_r.filter(r=>r.mes===m).reduce((s,r)=>s+r.importe,0);
   const pagSub = (m,sub) => pag_r.filter(r=>r.mes===m&&r.subcategoria===sub).reduce((s,r)=>s+r.importe,0);
   const impMes = m => imp_r.filter(r=>r.mes===m).reduce((s,r)=>s+r.importe,0);
 
@@ -2188,7 +2196,8 @@ function renderCFProy() {
     if (st==='real') {
       // ── REAL: datos directos de cobranzas y pagos ──
       // cobIng ya incluye: corriente + rezago entrante + adelantos
-      cobIng = cobSub(m,'INGRESOS');
+      // Si hay subcategoria usarla; si no (datos viejos sin subcategoria), tomar todo como INGRESOS
+      cobIng = cobSub(m,'INGRESOS') || (cobSub(m,'IVA')===0 ? cobAll(m) : cobSub(m,'INGRESOS'));
       cobIVA = cobSub(m,'IVA');
       rezago_in = 0; // ya está dentro de cobIng, no se suma aparte
 
