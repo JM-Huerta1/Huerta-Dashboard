@@ -168,7 +168,7 @@ hr{border:none;border-top:1px solid var(--border);margin:16px 0}
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" fill="#111"/><rect x="14" y="3" width="7" height="7" rx="1" fill="#111"/><rect x="3" y="14" width="7" height="7" rx="1" fill="#111"/><rect x="14" y="14" width="7" height="4" rx="1" fill="#111"/><rect x="17" y="20" width="4" height="1.5" rx=".75" fill="#111"/><rect x="20.25" y="17" width="4" height="1.5" rx=".75" fill="#111" transform="rotate(90 20.25 17)"/></svg>
       </div>
       <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-.02em;margin-bottom:4px">Dashboard Financiero</div>
-      <div style="font-size:13px;color:#555">Huerta Coworking</div>
+      <div style="font-size:13px;color:#555;display:none">Huerta Coworking</div>
     </div>
 
     <!-- Tabs -->
@@ -234,7 +234,7 @@ hr{border:none;border-top:1px solid var(--border);margin:16px 0}
           <div style="font-size:13px;color:#777;margin-bottom:4px;font-weight:500">Arrastrá o hacé clic para seleccionar</div>
           <div style="font-size:11px;color:#444">INGRESOS_Y_EGRESOS_V4.xlsx · exportado de Tango</div>
           <input type="file" id="fi-0" accept=".xlsx,.xls" style="display:none">
-          <input type="text" id="name-0" value="Huerta Coworking" style="display:none">
+          <input type="text" id="name-0" value="" style="display:none">
         </div>
         <div id="slot-status-0" style="font-size:12px;color:#4a8a4a;text-align:center;margin-top:8px;min-height:16px;font-weight:500"></div>
         <div style="display:none">
@@ -546,7 +546,7 @@ function finishSheetsLoad(data, clientName, savedId) {
   try{localStorage.setItem('huerta_sheet_id',savedId);}catch(e){}
   document.getElementById('upload-screen').style.display='none';
   document.getElementById('dashboard').style.display='block';
-  document.getElementById('dash-title').textContent=clientName;
+  document.getElementById('dash-title').textContent='Dashboard Financiero';
   curClient=clientName; curMeses=[...(data.meses||[])];
   document.getElementById('top-meta').textContent='☁️ Sheets · Datos: '+data.meses.map(mn).join(', ')+' · Ref: '+today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
   document.getElementById('btn-refresh-sheets').style.display='inline-flex';
@@ -763,7 +763,8 @@ function parseFile(slotIdx, file) {
       const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:false, raw:true});
       const data = extractData(wb);
       const nameInput = document.getElementById('name-'+slotIdx);
-      const clientName = nameInput.value.trim() || file.name.replace(/\.xlsx?$/i,'');
+      const companyInput = document.getElementById('excel-company-name');
+      const clientName = (companyInput && companyInput.value.trim()) || nameInput.value.trim() || file.name.replace(/\.xlsx?$/i,'').replace(/_/g,' ');
       nameInput.value = clientName;
       // Set today = max date found in this file's transactions
       const allDates = [
@@ -969,7 +970,7 @@ function launchDashboard() {
   if (!loaded.length) {
     // Use preloaded Huerta data
     Object.assign(clients, PRELOADED);
-    loaded.push('Huerta Coworking');
+    loaded.push(Object.keys(PRELOADED)[0]);
     // Compute today from preloaded data
     const firstClient = PRELOADED[Object.keys(PRELOADED)[0]];
     const allDates = [
@@ -994,7 +995,7 @@ function launchDashboard() {
   render();
   document.getElementById('upload-screen').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
-  document.getElementById('dash-title').textContent = curClient;
+  document.getElementById('dash-title').textContent = 'Dashboard Financiero';
   const srcLabel = loadedSlots.filter(Boolean).length ? '📁 Excel' : '☁️ Sheets';
   document.getElementById('top-meta').textContent = srcLabel + ' · Datos: ' + (clients[curClient].meses||[]).map(mn).join(', ') + ' · Ref: ' + today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
   // Show mail tab if admin mode
@@ -1019,7 +1020,7 @@ function switchClient(btn) {
   curMeses = [...(clients[curClient].meses || [])];
   buildFilters();
   render();
-  document.getElementById('dash-title').textContent = curClient;
+  document.getElementById('dash-title').textContent = 'Dashboard Financiero';
   document.getElementById('top-meta').textContent = 'Datos: ' + clients[curClient].meses.map(mn).join(', ') + ' · Referencia: ' + today.toLocaleDateString('es-AR',{day:'2-digit',month:'long'});
   // Reset mail
   document.getElementById('mail-preview-wrap').style.display = 'none';
@@ -2066,7 +2067,9 @@ function handleSheetsConnect() {
   // Accept Apps Script URL directly or Google Sheets URL
   const match = id.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
   const sheetId = match ? match[1] : id;
-  loadFromSheets(sheetId, 'Huerta Coworking');
+  const nameInput = document.getElementById('name-0');
+  const clientName = (nameInput && nameInput.value.trim()) || 'Mi Empresa';
+  loadFromSheets(sheetId, clientName);
 }
 
 function switchTab(tab) {
@@ -2099,7 +2102,7 @@ function launchDemo() {
   if(allDates.length&&!_todayOverride){today=new Date(Math.max(...allDates));today.setHours(0,0,0,0);}
   document.getElementById('upload-screen').style.display='none';
   document.getElementById('dashboard').style.display='block';
-  document.getElementById('dash-title').textContent=name;
+  document.getElementById('dash-title').textContent='Dashboard Financiero';
   document.getElementById('top-meta').textContent='⚡ Demo · Datos: '+(PRELOADED[name].meses||[]).map(mn).join(', ')+' · Ref: '+today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
   document.getElementById('btn-refresh-sheets').style.display='none';
   buildFilters();
