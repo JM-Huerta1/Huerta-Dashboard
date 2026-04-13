@@ -1036,6 +1036,27 @@ function extractData(wb) {
     });
   }
 
+  // ── BUILD er_detail ──
+  const _nS2 = s => { const v=String(s==null?'':s).trim(); return v==='COSTOS VARIABLES'?'COSTOS VARIABLES POR SEDE':v; };
+  meses.forEach(mes => {
+    const erM2 = erWork.filter(r => mKey(pD2(r['Fecha']||r['fecha'])) === mes);
+    if (!erM2.length) return;
+    const det = {};
+    ['INGRESOS','COSTOS VARIABLES POR SEDE','COSTOS DE LA MARCA','FINANCIEROS','IMPUESTOS','IVA'].forEach(sub => {
+      const rows = erM2.filter(r => _nS2(r['SUBCATEGORIA']||r['Subcategoria']) === sub);
+      if (!rows.length) return;
+      det[sub] = {};
+      rows.forEach(r => {
+        const cuenta = String(r['Cuenta']||r['cuenta']||''); if (!cuenta) return;
+        const sede   = String(r['SEDES']||r['Sedes']||'TOTAL').toUpperCase();
+        const val    = pN(r['Importe']||r['importe']||0);
+        if (!det[sub][cuenta]) det[sub][cuenta] = {_total:0};
+        det[sub][cuenta]._total += val;
+        det[sub][cuenta][sede]   = (det[sub][cuenta][sede]||0) + val;
+      });
+    });
+    out.er_detail[mes] = det;
+  });
   return out;
 }
 
@@ -1681,28 +1702,62 @@ function renderMes() {
 
 function renderDeudores() {
   const data = D(), deud=data.deudores||[];
-  const agg={};deud.forEach(r=>{if(!agg[r.nombre])agg[r.nombre]={total:0,venc:pD(r.vencimiento)};agg[r.nombre].total+=r.pendiente;const v=pD(r.vencimiento);if(v&&(!agg[r.nombre].venc||v<agg[r.nombre].venc))agg[r.nombre].venc=v;});
+  const agg={};
+  deud.forEach(r=>{
+    if(!agg[r.nombre]) agg[r.nombre]={total:0,venc:null};
+    agg[r.nombre].total+=r.pendiente;
+    const v=pD(r.vencimiento);
+    if(v&&(!agg[r.nombre].venc||v<agg[r.nombre].venc)) agg[r.nombre].venc=v;
+  });
   const arr=Object.entries(agg).sort((a,b)=>b[1].total-a[1].total);
-  const total=arr.reduce((a,[,v])=>a+v.total,0),venc=arr.filter(([,v])=>v.venc&&v.venc<today).reduce((a,[,v])=>a+v.total,0);
+  const positivos=arr.filter(([,v])=>v.total>0);
+  const total=arr.reduce((a,[,v])=>a+v.total,0);
+  const venc=positivos.filter(([,v])=>v.venc&&v.venc<today).reduce((a,[,v])=>a+v.total,0);
   document.getElementById('kpi-deud').innerHTML=`
-    <div class="kpi red"><div class="kpi-label">Total pendiente</div><div class="kpi-val">${fmt(total)}</div><div class="kpi-sub">${arr.length} clientes</div></div>
-    <div class="kpi amber"><div class="kpi-label">Facturas vencidas</div><div class="kpi-val">${fmt(venc)}</div><div class="kpi-sub">gestión urgente</div></div>
-    <div class="kpi"><div class="kpi-label">En plazo</div><div class="kpi-val">${fmt(Math.max(0,total-venc))}</div><div class="kpi-sub">dentro del vencimiento</div></div>`;
-  document.getElementById('deud-meta').textContent=`${arr.length} clientes · ${fmtP(total)} total`;
-  document.getElementById('t-deud').innerHTML=arr.map(([n,v])=>{const isV=v.venc&&v.venc<today;return`<tr><td class="tdn">${n}</td><td>${v.venc?v.venc.toLocaleDateString('es-AR'):'—'}</td><td><span class="badge ${isV?'br':'ba'}">${isV?'Vencido':'Pendiente'}</span></td><td class="tr r">${fmtP(v.total)}</td></tr>`;}).join('');
+    <div class="kpi red"><div class="kpi-label">Total a cobrar (neto)</div><div class="kpi-val">${fmt(total)}</div><div class="kpi-sub">${arr.length} clientes</div></div>
+    <div class="kpi ${venc>0?'red':'green'}"><div class="kpi-label">Cartera vencida</div><div class="kpi-val">${fmt(venc)}</div><div class="kpi-sub">vencida al ${today.toLocaleDateString('es-AR')}</div></div>
+    <div class="kpi"><div class="kpi-label">Mayor deudor</div><div class="kpi-val">${positivos.length?fmt(positivos[0][1].total):'-'}</div><div class="kpi-sub">${positivos.length?positivos[0][0].substring(0,24)+'...':''}</div></div>`;
+  document.getElementById('deud-meta').textContent=`${arr.length} clientes · ${fmtP(total)} neto a cobrar`;
+  document.getElementById('t-deud').innerHTML=arr.map(([n,v])=>{
+    const isV=v.venc&&v.venc<today;
+    const isCredit=v.total<0;
+    const cls=isCredit?'ag':isV?'ar':'aa';
+    const badge=isCredit?'Saldo a favor':isV?'Vencido':'Pendiente';
+    const badgeCls=isCredit?'bg':'b'+(isV?'r':'a');
+    return`<tr><td class="tdn">${n}</td><td>${v.venc?v.venc.toLocaleDateString('es-AR'):'—'}</td><td><span class="badge ${badgeCls}">${badge}</span></td><td class="tr ${cls}">${fmtP(v.total)}</td></tr>`;
+  }).join('');
 }
 
 function renderProveedores() {
   const data = D(), prov=data.proveedores_pend||[];
-  const agg={};prov.forEach(r=>{if(!agg[r.nombre])agg[r.nombre]={total:0,venc:pD(r.vencimiento)};agg[r.nombre].total+=r.pendiente;const v=pD(r.vencimiento);if(v&&(!agg[r.nombre].venc||v<agg[r.nombre].venc))agg[r.nombre].venc=v;});
+  // Aggregate net pendiente per proveedor (sum all rows including negatives)
+  const agg={};
+  prov.forEach(r=>{
+    if(!agg[r.nombre]) agg[r.nombre]={total:0,venc:null};
+    agg[r.nombre].total+=r.pendiente;
+    const v=pD(r.vencimiento);
+    if(v&&(!agg[r.nombre].venc||v<agg[r.nombre].venc)) agg[r.nombre].venc=v;
+  });
+  // Sort: biggest net debt first, then credits (negative) at bottom
   const arr=Object.entries(agg).sort((a,b)=>b[1].total-a[1].total);
-  const total=arr.reduce((a,[,v])=>a+v.total,0);
+  const deudas=arr.filter(([,v])=>v.total>0);
+  const creditos=arr.filter(([,v])=>v.total<0);
+  const totalDeuda=deudas.reduce((a,[,v])=>a+v.total,0);
+  const totalCredito=creditos.reduce((a,[,v])=>a+v.total,0);
+  const totalNeto=totalDeuda+totalCredito;
   document.getElementById('kpi-prov').innerHTML=`
-    <div class="kpi amber"><div class="kpi-label">Total deuda proveedores</div><div class="kpi-val">${fmt(total)}</div><div class="kpi-sub">${arr.length} proveedores</div></div>
-    <div class="kpi red"><div class="kpi-label">Mayor deuda individual</div><div class="kpi-val">${arr.length?fmt(arr[0][1].total):'-'}</div><div class="kpi-sub">${arr.length?arr[0][0].substring(0,28)+'...':''}</div></div>
-    <div class="kpi"><div class="kpi-label">Promedio por proveedor</div><div class="kpi-val">${arr.length?fmt(total/arr.length):'-'}</div><div class="kpi-sub">por empresa</div></div>`;
-  document.getElementById('prov-meta').textContent=`${arr.length} proveedores · ${fmtP(total)} total`;
-  document.getElementById('t-prov').innerHTML=arr.map(([n,v])=>{const isV=v.venc&&v.venc<today;return`<tr><td class="tdn">${n}</td><td>${v.venc?v.venc.toLocaleDateString('es-AR'):'—'}</td><td><span class="badge ${isV?'br':'ba'}">${isV?'Vencido':'Pendiente'}</span></td><td class="tr a">${fmtP(v.total)}</td></tr>`;}).join('');
+    <div class="kpi amber"><div class="kpi-label">Total deuda neta</div><div class="kpi-val">${fmt(totalNeto)}</div><div class="kpi-sub">${arr.length} proveedores</div></div>
+    <div class="kpi red"><div class="kpi-label">Mayor deuda</div><div class="kpi-val">${deudas.length?fmt(deudas[0][1].total):'-'}</div><div class="kpi-sub">${deudas.length?deudas[0][0].substring(0,28):'sin deuda'}</div></div>
+    <div class="kpi green"><div class="kpi-label">Saldo a favor</div><div class="kpi-val">${creditos.length?fmt(Math.abs(totalCredito)):'-'}</div><div class="kpi-sub">${creditos.length} proveedores con crédito</div></div>`;
+  document.getElementById('prov-meta').textContent=`${arr.length} proveedores · Deuda: ${fmtP(totalDeuda)} · A favor: ${fmtP(Math.abs(totalCredito))}`;
+  document.getElementById('t-prov').innerHTML=arr.map(([n,v])=>{
+    const isV=v.venc&&v.venc<today;
+    const isCredit=v.total<0;
+    const cls=isCredit?'ag':isV?'ar':'aa';
+    const badge=isCredit?'Saldo a favor':isV?'Vencido':'Pendiente';
+    const badgeCls=isCredit?'bg':'b'+(isV?'r':'a');
+    return`<tr><td class="tdn">${n}</td><td>${v.venc?v.venc.toLocaleDateString('es-AR'):'—'}</td><td><span class="badge ${badgeCls}">${badge}</span></td><td class="tr ${cls}">${fmtP(v.total)}</td></tr>`;
+  }).join('');
 }
 
 // ── CASHFLOW BANCOS ──
