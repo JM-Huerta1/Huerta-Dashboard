@@ -738,6 +738,30 @@ const v=parseDate(r['Vencimiento']||r['vencimiento']);const d=parseDate(r['Fecha
     out.er_detail[mes] = erDet;
   });
 
+  // ── BUILD er_detail from erWork ──
+  // Groups rows: SUBCATEGORIA → Cuenta → SEDES → _total
+  const _ER_SUBS = ['INGRESOS','COSTOS VARIABLES POR SEDE','COSTOS DE LA MARCA','FINANCIEROS','IMPUESTOS','IVA'];
+  const _nS = s => { const v=String(s||'').trim(); return v==='COSTOS VARIABLES'?'COSTOS VARIABLES POR SEDE':v; };
+  meses.forEach(mes => {
+    const erM2 = erWork.filter(r => mKey(pD2(r['Fecha']||r['fecha'])) === mes);
+    if (!erM2.length) return;
+    const det = {};
+    _ER_SUBS.forEach(sub => {
+      const rows = erM2.filter(r => _nS(r['SUBCATEGORIA']||r['Subcategoria']||'') === sub);
+      if (!rows.length) return;
+      det[sub] = {};
+      rows.forEach(r => {
+        const cuenta = String(r['Cuenta']||r['cuenta']||''); if (!cuenta) return;
+        const sede   = String(r['SEDES']||r['Sedes']||'').toUpperCase() || 'TOTAL';
+        const val    = pN(r['Importe']||r['importe']||0);
+        if (!det[sub][cuenta]) det[sub][cuenta] = {_total:0};
+        det[sub][cuenta]._total += val;
+        det[sub][cuenta][sede]   = (det[sub][cuenta][sede]||0) + val;
+      });
+    });
+    out.er_detail[mes] = det;
+  });
+
   return out;
 }
 
@@ -842,11 +866,16 @@ function extractData(wb) {
   const sER5 = sn.find(s => s.trim() === '5') || null;
   // Prefer sheet '5' only if it has both Fecha AND Importe data
   // Some files have sheet '5' as template (empty except SUBCATEGORIA column)
-  const _er5rows = sER5 ? XLSX.utils.sheet_to_json(wb.Sheets[sER5],{defval:null,raw:true}) : [];
-  const _er5valid = _er5rows.some(r => (r['Fecha']||r['fecha']) && (r['Importe']||r['importe']));
-  const _erNamed = sER ? XLSX.utils.sheet_to_json(wb.Sheets[sER],{defval:null,raw:true}) : [];
+  const _er5rows = sER5 ? XLSX.utils.sheet_to_json(wb.Sheets[sER5],{defval:null,raw:false}) : [];
+  // Sheet 5 must have 2026 data (not just any data - it may only have historical rows)
+  const _er5valid = _er5rows.some(r => {
+    const d = (()=>{ const v=r['Fecha']||r['fecha']; if(!v) return null; if(typeof v==='number') { const dt=new Date(1900,0,+v-1); return isNaN(dt)?null:dt; } const p=String(v).match(/^(\d{4})-(\d{2})/); return p?new Date(+p[1],+p[2]-1,1):null; })();
+    return d && d.getFullYear()>=2026 && (r['Importe']||r['importe']);
+  });
+  const _erNamed = sER ? XLSX.utils.sheet_to_json(wb.Sheets[sER],{defval:null,raw:false}) : [];
   const _erNamedValid = _erNamed.some(r => (r['Fecha']||r['fecha']) && (r['Importe']||r['importe']));
   const sERuse = _er5valid ? sER5 : (_erNamedValid ? sER : sER5);
+  console.log('[ER]', {sERuse, _er5valid, _erNamedValid});
   const sFC  = find(['facturas clientes','fac clientes']);
   const sFP  = find(['facturas proveedores','fac prov']);
   const sObj  = sn.find(s => s.trim().toUpperCase() === 'OBJETIVOS') || find(['objetivo']) || null;
@@ -857,7 +886,7 @@ function extractData(wb) {
   // Convert Excel serial or string date to JS Date (local time, no UTC offset)
   const excelSerial = v => { if(!v||isNaN(+v)) return null; const d=new Date(1900,0,+v-1); return isNaN(d)?null:d; };
   const parseStr = s => { if(!s) return null; const p=String(s).match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/); if(p){return new Date(+p[3],+p[2]-1,+p[1]);} const p2=String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/); if(p2){return new Date(+p2[1],+p2[2]-1,+p2[3]);} return null; };
-  const pD2 = v => { if(v===null||v===undefined||v==='') return null; if(typeof v==='number'||(!isNaN(+v)&&String(v).match(/^\d+(\.\d+)?$/))) return excelSerial(v); return parseStr(String(v)); };
+  const pD2 = v => { if(v===null||v===undefined||v==='') return null; if(v instanceof Date) return isNaN(v)?null:v; if(typeof v==='number'||(!isNaN(+v)&&String(v).match(/^\d+(\.\d+)?$/))) return excelSerial(v); return parseStr(String(v)); };
   const pN  = v => { if(v===null||v===undefined||v==='') return 0; const s=String(v); const f=s.match(/^=(-?[\d.]+)$/); if(f)return parseFloat(f[1]); const n=parseFloat(s.replace(/[^0-9.\-]/g,'')); return isNaN(n)?0:n; };
   const mKey = d => d ? d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0') : null;
 
@@ -1298,7 +1327,18 @@ function renderEBITDA() {
   };
   const getRv = (m, sub, c) => { const d=erDetail[m]?.[sub]?.[c]; if(!d) return null; return st.sede==='todas'?d._total||0:d[st.sede]||0; };
   const getBv = (m, sub, c) => { const d=bud[m]?.[sub]?.[c]; if(!d) return null; return st.sede==='todas'?Object.values(d).reduce((s,v)=>s+v,0):d[st.sede]??null; };
-  const getRsub = (m, sub) => { const d=erDetail[m]?.[sub]; if(!d) return 0; return Object.keys(d).reduce((s,k)=>s+getRv(m,sub,k),0); };
+  const getRsub = (m, sub) => {
+    const d = erDetail[m]?.[sub];
+    if (d) return Object.keys(d).reduce((s,k) => s + getRv(m,sub,k), 0);
+    // Fallback to data.ebitda totals when er_detail not built
+    const eb = (data.ebitda||{})[m] || {};
+    if (sub === 'INGRESOS') return eb.ingresos || 0;
+    if (sub === 'COSTOS VARIABLES POR SEDE') return eb.costos_sede || 0;
+    if (sub === 'COSTOS DE LA MARCA') return eb.costos_marca || 0;
+    if (sub === 'FINANCIEROS') return eb.financieros || 0;
+    if (sub === 'IMPUESTOS') return eb.impuestos || 0;
+    return 0;
+  };
   const getBsub = (m, sub) => { const d=bud[m]?.[sub]; if(!d) return 0; return Object.keys(d).reduce((s,k)=>s+(getBv(m,sub,k)||0),0); };
 
   const dispMeses = getMeses();
