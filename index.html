@@ -155,6 +155,19 @@ tr:hover td{background:var(--gray);color:var(--text)}
 
 hr{border:none;border-top:1px solid var(--border);margin:16px 0}
 </style>
+<style id="print-ebitda-style">
+@media print {
+  body * { visibility: hidden !important; }
+  #ebitda-print-area, #ebitda-print-area * { visibility: visible !important; }
+  #ebitda-print-area {
+    position: fixed; top: 0; left: 0; width: 100%;
+    background: white; padding: 10px;
+  }
+  #ebitda-print-area table { font-size: 9px !important; }
+  #ebitda-print-area td, #ebitda-print-area th { padding: 3px 4px !important; }
+  @page { size: landscape; margin: 8mm; }
+}
+</style>
 </head>
 <body>
 
@@ -1324,20 +1337,21 @@ function renderEBITDA() {
   };
 
   // Build table header
-  h += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>
-    <th style="text-align:left;padding:6px 7px;font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1.5px solid var(--border);min-width:180px;white-space:nowrap">Concepto</th>`;
+  h += `<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button onclick="window.printEBITDA()" style="padding:6px 14px;background:#1a1a1a;border:1px solid #333;border-radius:6px;color:#ccc;font-size:11px;cursor:pointer;font-family:inherit">🖨 Imprimir</button></div>`;
+  h += `<div style="overflow-x:auto"><table id="ebitda-print-table" style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr>
+    <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1.5px solid var(--border);min-width:180px;white-space:nowrap">Concepto</th>`;
 
   if (dispMeses.length === 1) {
     const m=dispMeses[0], hasR=REAL_M.includes(m);
-    h += `<th style="text-align:right;padding:6px 7px;font-size:10px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">Real</th>
-          <th style="text-align:right;padding:6px 7px;font-size:10px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">Ppto</th>`;
-    if (hasR) h += `<th style="text-align:right;padding:6px 7px;font-size:10px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">Desv.</th>`;
+    h += `<th style="text-align:right;padding:4px 6px;font-size:9px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">Real</th>
+          <th style="text-align:right;padding:4px 6px;font-size:9px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">Ppto</th>`;
+    if (hasR) h += `<th style="text-align:right;padding:4px 6px;font-size:9px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">Desv.</th>`;
   } else {
     dispMeses.forEach(m => {
       const nc = REAL_M.includes(m) ? 2 : 1;
-      h += `<th colspan="${nc}" style="text-align:center;padding:6px 7px;font-size:10px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">${MN[m]||m}</th>`;
+      h += `<th colspan="${nc}" style="text-align:center;padding:4px 6px;font-size:9px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border)">${MN[m]||m}</th>`;
     });
-    if (showTotal) h += `<th colspan="2" style="text-align:center;padding:6px 7px;font-size:10px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border);border-left:2px solid var(--border)">Total año</th>`;
+    if (showTotal) h += `<th colspan="2" style="text-align:center;padding:4px 6px;font-size:9px;color:var(--text3);text-transform:uppercase;background:var(--gray);border-bottom:1.5px solid var(--border);border-left:2px solid var(--border)">Total año</th>`;
     h += '</tr><tr><th></th>';
     dispMeses.forEach(m => {
       if (REAL_M.includes(m)) h += `<th style="text-align:right;padding:4px 7px;font-size:9px;color:var(--g);background:var(--gray);border-bottom:1px solid var(--border)">R</th>`;
@@ -1355,7 +1369,7 @@ function renderEBITDA() {
     const bg = darkBg ? 'var(--text)' : '#1a1a2e';
     const erv = dispMeses.map(m => REAL_M.includes(m) ? subList.reduce((s,sb)=>s+getRsub(m,sb),0) : null);
     const ebv = dispMeses.map(m => subList.reduce((s,sb)=>s+getBsub(m,sb),0));
-    let row = `<tr class="no-hover" style="background:${bg}"><td style="padding:10px 7px;font-weight:500;font-size:13px;color:var(--card)">${label}</td>`;
+    let row = `<tr class="no-hover" style="background:${bg}"><td style="padding:6px 7px;font-weight:500;font-size:12px;color:var(--card)">${label}</td>`;
     if (dispMeses.length === 1) {
       const m=dispMeses[0], hasR=REAL_M.includes(m), rv=hasR?erv[0]:null, bvv=ebv[0];
       const rI=hasR?getRsub(m,'INGRESOS'):null, bI=getBsub(m,'INGRESOS');
@@ -1389,7 +1403,7 @@ function renderEBITDA() {
 
     // Section header row
     h += `<tr style="background:var(--gray);cursor:pointer" onclick="document.getElementById('ebitda-content')._togSub(${subIdx})">
-      <td style="padding:8px 7px;font-weight:500;font-size:11px;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;border-top:1px solid var(--border);white-space:nowrap">
+      <td style="padding:5px 6px;font-weight:500;font-size:10px;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;border-top:1px solid var(--border);white-space:nowrap">
         <span style="font-size:9px;display:inline-block;margin-right:5px;${isSubOpen?'transform:rotate(90deg)':''}">▶</span>${SL[sub]}
       </td>`;
 
@@ -1494,8 +1508,8 @@ function renderEBITDA() {
   if (dispMeses.length === 1) {
     const m=dispMeses[0], hasR=REAL_M.includes(m), rv=hasR?nrv[0]:null, bvv=nbv[0];
     const rI=hasR?getRsub(m,'INGRESOS'):null, bI=getBsub(m,'INGRESOS');
-    h += `<td style="text-align:right;padding:10px 7px;font-weight:500;font-size:13px;font-variant-numeric:tabular-nums;color:${rv!==null?realCol(rv):'var(--text3)'}">${rv!==null?fmt(rv,m):''}<span style="font-size:10px;color:var(--text3);margin-left:3px">${rI&&rv!==null?Math.round(rv/rI*1000)/10+'%':''}</span></td>`;
-    h += `<td style="text-align:right;padding:10px 7px;font-weight:500;font-size:13px;font-variant-numeric:tabular-nums;color:var(--text3)">${fmt(bvv,m)}<span style="font-size:10px;color:var(--text3);margin-left:3px">${bI?Math.round(bvv/bI*1000)/10+'%':''}</span></td>`;
+    h += `<td style="text-align:right;padding:6px 7px;font-weight:500;font-size:12px;font-variant-numeric:tabular-nums;color:${rv!==null?realCol(rv):'var(--text3)'}">${rv!==null?fmt(rv,m):''}<span style="font-size:10px;color:var(--text3);margin-left:3px">${rI&&rv!==null?Math.round(rv/rI*1000)/10+'%':''}</span></td>`;
+    h += `<td style="text-align:right;padding:6px 7px;font-weight:500;font-size:12px;font-variant-numeric:tabular-nums;color:var(--text3)">${fmt(bvv,m)}<span style="font-size:10px;color:var(--text3);margin-left:3px">${bI?Math.round(bvv/bI*1000)/10+'%':''}</span></td>`;
     if (hasR) h += `<td style="text-align:right;padding:10px 7px">${rv!==null?badge(rv,bvv):'—'}</td>`;
   } else {
     let totNR=0, totNB=0, totNRc=0;
@@ -2251,6 +2265,27 @@ function setupDrop(i) {
   fi.addEventListener('change', e => { if(e.target.files[0]) parseFile(i, e.target.files[0]); });
 }
 
+// ── PRINT ──
+window.printEBITDA = function() {
+  // Wrap table in print area div
+  const tbl = document.getElementById('ebitda-print-table');
+  if (!tbl) return;
+  // Remove old wrapper if exists
+  const old = document.getElementById('ebitda-print-area');
+  if (old) old.remove();
+  const wrap = document.createElement('div');
+  wrap.id = 'ebitda-print-area';
+  // Clone table into wrapper
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:14px;font-weight:600;margin-bottom:8px;color:#000';
+  title.textContent = 'EBITDA — ' + (document.getElementById('top-meta')?.textContent || '');
+  wrap.appendChild(title);
+  wrap.appendChild(tbl.cloneNode(true));
+  document.body.appendChild(wrap);
+  window.print();
+  setTimeout(() => wrap.remove(), 1000);
+};
+
 // ── INIT ──
 setupDrop(0);
 setupDrop(1);
@@ -2583,7 +2618,7 @@ function renderCFProy() {
   h+=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
   <thead><tr style="background:var(--gray)">
     <th style="text-align:left;padding:6px 10px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1.5px solid var(--border);white-space:nowrap">Concepto</th>
-    ${rows.map(r=>`<th style="text-align:right;padding:6px 7px;font-size:10px;color:${stColor(r.st)};text-transform:uppercase;border-bottom:1.5px solid var(--border);white-space:nowrap">
+    ${rows.map(r=>`<th style="text-align:right;padding:4px 6px;font-size:9px;color:${stColor(r.st)};text-transform:uppercase;border-bottom:1.5px solid var(--border);white-space:nowrap">
       ${MN[r.m]||r.m}<br><span style="font-size:8px;font-weight:400;opacity:.8">${stLabel(r.st)}</span></th>`).join('')}
   </tr></thead><tbody>`;
 
