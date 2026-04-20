@@ -745,13 +745,13 @@ function extractData(wb) {
   const sER5 = sn.find(s => s.trim() === '5') || null;
   // Prefer sheet '5' only if it has both Fecha AND Importe data
   // Some files have sheet '5' as template (empty except SUBCATEGORIA column)
-  const _er5rows = sER5 ? XLSX.utils.sheet_to_json(wb.Sheets[sER5],{defval:null,raw:true}).map(r=>_resolveRow(r,['Importe','importe'])) : [];
+  const _er5rows = sER5 ? XLSX.utils.sheet_to_json(wb.Sheets[sER5],{defval:null,raw:true}).map(r=>_resolveRow(r,['Importe','importe','Fecha','fecha','FECHA DE PAGO','MES','Mes','Vencimiento','vencimiento'])) : [];
   // Sheet 5 must have 2026 data (not just any data - it may only have historical rows)
   const _er5valid = _er5rows.some(r => {
     const d = (()=>{ const v=r['Fecha']||r['fecha']; if(!v) return null; if(typeof v==='number') { const dt=new Date(1900,0,+v-1); return isNaN(dt)?null:dt; } const p=String(v).match(/^(\d{4})-(\d{2})/); return p?new Date(+p[1],+p[2]-1,1):null; })();
     return d && d.getFullYear()>=2026 && (r['Importe']||r['importe']);
   });
-  const _erNamed = sER ? XLSX.utils.sheet_to_json(wb.Sheets[sER],{defval:null,raw:true}).map(r=>_resolveRow(r,['Importe','importe'])) : [];
+  const _erNamed = sER ? XLSX.utils.sheet_to_json(wb.Sheets[sER],{defval:null,raw:true}).map(r=>_resolveRow(r,['Importe','importe','Fecha','fecha','FECHA DE PAGO','MES','Mes','Vencimiento','vencimiento'])) : [];
   const _erNamedValid = _erNamed.some(r => (r['Fecha']||r['fecha']) && (r['Importe']||r['importe']));
   const sERuse = _er5valid ? sER5 : (_erNamedValid ? sER : sER5);
   const sFC  = find(['facturas clientes','fac clientes']);
@@ -760,7 +760,7 @@ function extractData(wb) {
   const sCFB  = find(['cashflow banco','cashflow ban']); // CASHFLOW BANCOS sheet (optional)
   if (!sPag||!sCob||!sER) throw new Error('Faltan solapas requeridas (pagos, cobranzas, estado de resultados)');
 
-  const toRows = (name, skipCols=['Importe','importe','IMPORTE','Pendiente','pendiente','Total','Pagado','Cobrado']) => name ? XLSX.utils.sheet_to_json(wb.Sheets[name],{defval:null,raw:true}).map(r=>_resolveRow(r,skipCols)) : [];
+  const toRows = (name, skipCols=['Importe','importe','IMPORTE','Pendiente','pendiente','Total','Pagado','Cobrado','Fecha','fecha','Fecha Pago','Fecha Pago','FECHA DE PAGO','MES','Mes','Vencimiento','vencimiento','Fecha Factura','Fecha de Vencimiento','Días en Calle','Días de Rotación']) => name ? XLSX.utils.sheet_to_json(wb.Sheets[name],{defval:null,raw:true}).map(r=>_resolveRow(r,skipCols)) : [];
   // Convert Excel serial or string date to JS Date (local time, no UTC offset)
   const excelSerial = v => { if(!v||isNaN(+v)) return null; const d=new Date(1900,0,+v-1); return isNaN(d)?null:d; };
   const parseStr = s => { if(!s) return null; const p=String(s).match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/); if(p){return new Date(+p[3],+p[2]-1,+p[1]);} const p2=String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/); if(p2){return new Date(+p2[1],+p2[2]-1,+p2[3]);} return null; };
